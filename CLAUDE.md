@@ -13,6 +13,21 @@
   red and still needs to land (e.g. a deliberate WIP checkpoint), say so in
   the commit message — don't leave it unexplained.
 
+## Technical requirements (fixed, from the brief)
+- **Multi-user** — the app must distinguish between users, even if that's
+  nothing more than an anonymous session id (a cookie, not a login system,
+  is enough). Every piece of user data is tied to a session, not global.
+- **Real-time** — updates reach other users without a manual refresh, via
+  SSE, WebSocket, or fast polling. Whichever one is used, the choice has to
+  be justified (in `PROCESS.md` or a commit message), not just picked by
+  default. Any long-lived connection has to recover cleanly after Fly's
+  auto-stop/auto-start cycle puts the machine to sleep and wakes it back up
+  mid-session — a dropped connection is not a bug, a connection that never
+  recovers is.
+- **Persists** — state lives in a database on the `/data` volume (e.g.
+  SQLite), not in memory, so it survives both a restart and a full redeploy.
+  Nothing load-bearing is allowed to live only in the running process.
+
 ## Quality bar for the app
 - Keyboard-only use must work end to end: visible focus, a sane tab order,
   no control that's only reachable with a mouse.
