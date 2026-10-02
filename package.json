@@ -7,16 +7,24 @@
     "typecheck": "tsc --noEmit",
     "check": "pnpm typecheck && pnpm test",
     "check:evidence": "node scripts/check-evidence.ts",
-    "test": "vitest run"
+    "test": "vitest run",
+    "dev": "node src/server.ts",
+    "build": "esbuild src/server.ts --bundle --platform=node --format=esm --target=node24 --outfile=dist/server.js",
+    "start": "node dist/server.js"
   },
   "devDependencies": {
     "@types/jsdom": "^30.0.0",
     "@types/node": "^24.0.0",
+    "esbuild": "^0.28.2",
     "jsdom": "^30.1.0",
     "typescript": "^6.0.3",
     "vitest": "^5.0.1"
   },
   "engines": {
     "pnpm": ">=11"
+  },
+  "dependencies": {
+    "@hono/node-server": "^2.1.3",
+    "hono": "^4.13.12"
   }
 }
