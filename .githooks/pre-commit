@@ -1,9 +1,10 @@
 #!/bin/sh
 # Blocks the commit if anything staged looks like an API key. Your COMP4020
 # key (like any Anthropic key) starts with sk- followed by a long random
-# string, and a key committed here is public the moment you push.
+# string, and a key committed here is public the moment you push. Also
+# covers Groq's gsk_-prefixed keys, used by this app's LLM judge.
 
-pattern='sk-[A-Za-z0-9_-]{20,}'
+pattern='(sk-|gsk_)[A-Za-z0-9_-]{20,}'
 
 # Real keys are random base64url and always contain uppercase; this second
 # grep stage spares lowercase kebab-case identifiers (CSS classes, slugs)
