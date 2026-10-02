@@ -1,18 +1,27 @@
 # syntax = docker/dockerfile:1
 
-# A placeholder, and yours to replace: it serves one page, plus README.md
-# verbatim at /readme/, which is enough to prove the deploy path end to end.
-# Whatever your app is built with, the image that replaces this one must serve
-# HTTP on 0.0.0.0:$PORT (fly.toml sets PORT) and publish README.md at /readme/
-# (spec/README.md says what's checked).
+# Builder: installs dependencies and bundles the TypeScript server into one
+# file with esbuild. node:sqlite is built into Node itself, so there's no
+# native toolchain to carry into the runtime stage.
+FROM node:24-alpine AS builder
+WORKDIR /app
+RUN corepack enable
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+RUN pnpm install --frozen-lockfile
+COPY tsconfig.json ./
+COPY src ./src
+RUN pnpm run build
 
-FROM docker.io/library/busybox:1.38.0
-COPY placeholder/ /src/
-COPY README.md /src/
-# README.md goes into the page as-is, HTML-escaped, in place of @README@;
-# rendering it properly is your app's job
-RUN mkdir -p /site/readme \
-    && cp /src/index.html /site/ \
-    && sed 's/&/\&amp;/g; s/</\&lt;/g; s/>/\&gt;/g' /src/README.md > /src/body \
-    && sed -e '/@README@/{r /src/body' -e 'd}' /src/readme.html > /site/readme/index.html
-CMD ["sh", "-c", "exec httpd -f -p 0.0.0.0:${PORT:-8080} -h /site"]
+# Runtime: only the bundle, static assets and README.md (served verbatim at
+# /readme/, per spec/README.md). Serves HTTP on 0.0.0.0:$PORT; Fly's proxy
+# terminates TLS in front of it, so the app itself sees plain http.
+#
+# Stays root: the /data volume's ownership on first mount isn't something
+# this Dockerfile controls, and there's no second tenant on this single
+# machine to isolate from — simplicity over unverifiable hardening here.
+FROM node:24-alpine
+WORKDIR /app
+COPY --from=builder /app/dist/server.js ./dist/server.js
+COPY public ./public
+COPY README.md ./
+CMD ["node", "dist/server.js"]
