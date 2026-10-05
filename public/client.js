@@ -11,7 +11,7 @@
     [...transcript.querySelectorAll(".entry[data-id]")].map((li) => li.dataset.id),
   );
 
-  const VERDICT_LABEL = { yes: "是", no: "否", irrelevant: "无关", correct: "✓ 正确！" };
+  const VERDICT_LABEL = { yes: "Yes", no: "No", irrelevant: "Irrelevant", correct: "✓ Correct!" };
 
   function escapeHtml(s) {
     return s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
@@ -24,10 +24,10 @@
     if (entry.kind === "system") {
       li.textContent = entry.body;
     } else {
-      const verdictLabel = entry.verdict ? VERDICT_LABEL[entry.verdict] ?? entry.verdict : "……";
+      const verdictLabel = entry.verdict ? VERDICT_LABEL[entry.verdict] ?? entry.verdict : "…";
       li.innerHTML = `
-        <p class="entry-question"><span class="entry-label">${escapeHtml(entry.label ?? "匿名侦探")}</span> 问：${escapeHtml(entry.body)}</p>
-        <p class="entry-verdict">AI 裁判：<strong>${escapeHtml(verdictLabel)}</strong></p>
+        <p class="entry-question"><span class="entry-label">${escapeHtml(entry.label ?? "Anonymous Detective")}</span> asks: ${escapeHtml(entry.body)}</p>
+        <p class="entry-verdict">AI judge: <strong>${escapeHtml(verdictLabel)}</strong></p>
       `;
     }
     return li;
@@ -63,7 +63,7 @@
 
     button.disabled = true;
     const originalLabel = button.textContent;
-    button.textContent = "AI 裁判思考中…";
+    button.textContent = "AI judge is thinking…";
 
     try {
       await fetch(form.action, {
@@ -75,13 +75,13 @@
     } catch {
       // the SSE connection or a page refresh will still show the true state;
       // surface a hint rather than failing silently
-      button.textContent = "网络似乎不太好，请重试";
+      button.textContent = "Network seems unstable, please retry";
       setTimeout(() => {
         button.textContent = originalLabel;
       }, 2000);
     } finally {
       button.disabled = false;
-      if (button.textContent === "AI 裁判思考中…") button.textContent = originalLabel;
+      if (button.textContent === "AI judge is thinking…") button.textContent = originalLabel;
       input.focus();
     }
   });

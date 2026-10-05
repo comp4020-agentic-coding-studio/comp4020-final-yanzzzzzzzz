@@ -50,11 +50,11 @@ it("distinguishes multiple anonymous sessions in the same room", async () => {
   const { code } = await createRoom();
 
   const { cookie: cookieA, html: htmlA } = await visitRoom(code);
-  expect(htmlA).toContain("匿名侦探#1");
+  expect(htmlA).toContain("Anonymous Detective#1");
 
   // A request with no cookie at all is a second, distinct anonymous session.
   const { cookie: cookieB, html: htmlB } = await visitRoom(code);
-  expect(htmlB).toContain("匿名侦探#2");
+  expect(htmlB).toContain("Anonymous Detective#2");
 
   expect(cookieA).not.toBe(cookieB);
 });
@@ -66,14 +66,14 @@ it("broadcasts an asked question to the room's live transcript", async () => {
   const ask = await fetch(new URL(`/rooms/${code}/ask`, baseUrl), {
     method: "POST",
     headers: { cookie, "content-type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({ question: "这是一个测试问题" }),
+    body: new URLSearchParams({ question: "this is a test question" }),
     redirect: "manual",
   });
   expect(ask.status).toBe(303);
 
   const after = await fetch(new URL(`/rooms/${code}`, baseUrl), { headers: { cookie } });
   const html = await after.text();
-  expect(html).toContain("这是一个测试问题");
+  expect(html).toContain("this is a test question");
 });
 
 it("never leaks a puzzle's solution to the client while the room is active", async () => {

@@ -151,7 +151,7 @@ export function ensureParticipantLabel(roomId: string, sessionId: string): strin
   const { count } = db
     .prepare("SELECT COUNT(*) AS count FROM room_participants WHERE room_id = ?")
     .get(roomId) as { count: number };
-  const label = `匿名侦探#${count + 1}`;
+  const label = `Anonymous Detective#${count + 1}`;
   db.prepare(
     "INSERT INTO room_participants (room_id, session_id, label) VALUES (?, ?, ?)",
   ).run(roomId, sessionId, label);
