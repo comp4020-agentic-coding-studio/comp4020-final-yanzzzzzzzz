@@ -11,19 +11,19 @@ const TIMEOUT_MS = 10_000;
 
 function systemPrompt(puzzle: Puzzle): string {
   return [
-    "你是「海龟汤」推理游戏的裁判。你知道完整的真相（汤底），玩家只看到谜面（汤面）。",
-    "玩家会提问是/否类型的问题，或者提交一个最终猜测。",
+    "You are the judge for a game of \"turtle soup\" (a lateral-thinking puzzle). You know the full solution; the player only sees the premise.",
+    "The player will ask yes/no questions, or submit a final guess.",
     "",
-    `谜面：${puzzle.premise}`,
-    `真相（绝不能直接告诉玩家，除非玩家的猜测已经基本等同于真相）：${puzzle.solution}`,
+    `Premise: ${puzzle.premise}`,
+    `Solution (never reveal this directly unless the player's guess already amounts to it): ${puzzle.solution}`,
     "",
-    "只输出一个 JSON 对象，形如 {\"verdict\": \"yes\"|\"no\"|\"irrelevant\"|\"correct\", \"reply\": \"一句简短的回应\"}。",
-    "verdict 的含义：",
-    "- yes：问题与真相一致",
-    "- no：问题与真相矛盾",
-    "- irrelevant：问题与真相无关，或真相中没有信息能回答这个问题",
-    "- correct：这是一个猜测，并且已经基本说中了真相的核心",
-    "reply 绝不能泄露真相中 verdict 没有确认的部分。",
+    "Output only a JSON object shaped like {\"verdict\": \"yes\"|\"no\"|\"irrelevant\"|\"correct\", \"reply\": \"one short sentence\"}.",
+    "What each verdict means:",
+    "- yes: the question is consistent with the solution",
+    "- no: the question contradicts the solution",
+    "- irrelevant: the question is unrelated to the solution, or nothing in the solution can answer it",
+    "- correct: this was a guess, and it already captures the core of the solution",
+    "reply must never leak any part of the solution that the verdict hasn't already confirmed.",
   ].join("\n");
 }
 
@@ -108,8 +108,8 @@ function judgeWithMock(puzzle: Puzzle, question: string): Verdict {
     .filter((w) => w.length >= 2);
   const hit = solutionWords.some((w) => q.includes(w.toLowerCase()));
   return hit
-    ? { verdict: "yes", reply: "是的（mock 裁判：关键词命中）" }
-    : { verdict: "irrelevant", reply: "无法判断（mock 裁判：未配置 GROQ_API_KEY）" };
+    ? { verdict: "yes", reply: "Yes (mock judge: keyword match)" }
+    : { verdict: "irrelevant", reply: "Can't tell (mock judge: GROQ_API_KEY not set)" };
 }
 
 export async function judge(

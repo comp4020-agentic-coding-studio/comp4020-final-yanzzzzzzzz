@@ -1,6 +1,6 @@
 export function layout(title: string, body: string): string {
   return `<!doctype html>
-<html lang="zh-CN">
+<html lang="en">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -9,8 +9,8 @@ export function layout(title: string, body: string): string {
 </head>
 <body>
   <header class="site-header">
-    <a class="brand" href="/">海龟汤协作解谜室</a>
-    <a href="/readme/">关于</a>
+    <a class="brand" href="/">Turtle Soup Puzzle Room</a>
+    <a href="/readme/">About</a>
   </header>
   <main>
 ${body}

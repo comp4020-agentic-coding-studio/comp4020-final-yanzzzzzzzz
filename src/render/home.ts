@@ -2,17 +2,18 @@ import { layout } from "./layout.ts";
 
 export function homePage(): string {
   return layout(
-    "海龟汤协作解谜室",
+    "Turtle Soup Puzzle Room",
     `
     <section class="hero">
-      <h1>海龟汤协作解谜室</h1>
+      <h1>Turtle Soup Puzzle Room</h1>
       <p>
-        AI 知道完整真相，只给出一句诡异的谜面。房间里的所有人共用同一份提问记录——
-        你问的是/否问题，AI 实时裁定，答案立刻广播给房间里的每一个人。一起推理，
-        一起破案。
+        The AI knows the whole truth, and only ever gives you one cryptic premise.
+        Everyone in the room shares the same transcript — ask yes/no questions,
+        the AI rules on them in real time, and the answer broadcasts live to
+        everyone in the room. Reason together, solve the case together.
       </p>
       <form method="post" action="/rooms">
-        <button type="submit">开始新案件</button>
+        <button type="submit">Start a new case</button>
       </form>
     </section>
     `,

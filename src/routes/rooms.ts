@@ -35,7 +35,9 @@ rooms.get("/rooms/:code", (c) => {
   const sessionId = getOrCreateSessionId(c);
   const label = ensureParticipantLabel(room.id, sessionId);
   const transcript = getTranscript(room.id);
-  const notice = c.req.query("cooldown") ? "慢一点——同一个人连续提问要间隔几秒钟。" : undefined;
+  const notice = c.req.query("cooldown")
+    ? "Slow down — the same person has to wait a few seconds between questions."
+    : undefined;
 
   return c.html(roomPage({ room, puzzle, transcript, label, notice }));
 });
@@ -71,7 +73,7 @@ rooms.post("/rooms/:code/ask", async (c) => {
       roomId: room.id,
       sessionId,
       kind: "system",
-      body: "AI 裁判暂时没有回应，请稍等片刻再试一次。",
+      body: "The AI judge didn't respond in time, please try again shortly.",
       verdict: null,
       label: null,
     });
