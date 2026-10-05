@@ -103,7 +103,8 @@ input[type="text"] {
   background: color-mix(in srgb, limegreen 15%, var(--bg));
 }
 
-.whoami {
+.whoami,
+.online-count {
   font-size: 0.9rem;
   opacity: 0.8;
 }

@@ -16,6 +16,10 @@ const VERDICT_LABEL: Record<string, string> = {
   correct: "✓ Correct!",
 };
 
+function onlineLabel(online: number): string {
+  return `👥 ${online} ${online === 1 ? "person" : "people"} online`;
+}
+
 function entryHtml(entry: QaEntry): string {
   if (entry.kind === "system") {
     return `<li class="entry entry-system">${escapeHtml(entry.body)}</li>`;
@@ -33,8 +37,9 @@ export function roomPage(args: {
   transcript: QaEntry[];
   label: string;
   notice?: string;
+  onlineCount: number;
 }): string {
-  const { room, puzzle, transcript, label, notice } = args;
+  const { room, puzzle, transcript, label, notice, onlineCount } = args;
   const solved = room.status === "solved";
 
   return layout(
@@ -49,6 +54,7 @@ export function roomPage(args: {
           : ""
       }
       <p class="whoami">You are <strong>${escapeHtml(label)}</strong></p>
+      <p class="online-count" id="online-count">${onlineLabel(onlineCount)}</p>
       ${notice ? `<p class="notice" role="status">${escapeHtml(notice)}</p>` : ""}
 
       <ul class="transcript" id="transcript">
