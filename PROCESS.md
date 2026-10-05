@@ -157,6 +157,20 @@ the brief is judged on. Deliberately not live: a solved room leaving the
 lobby, which would mean broadcasting on every solve too for a case (a
 stale-but-harmless join link for a few minutes) that doesn't block anyone.
 
+## One red commit in that sequence
+
+`1b25e42` (the lobby's backend commit) shows red in CI history:
+`server.ts` was changed there to call `homePage({ rooms: listActiveRooms() })`,
+but `homePage()`'s signature only grew that parameter in the very next
+commit (`05e3929`), so that one commit, checked out on its own, doesn't
+typecheck. Root cause was splitting the backend/frontend commits without
+running `pnpm typecheck` against each commit individually, only against the
+cumulative working tree at the end. Caught from CI, not before pushing.
+The repo's "never rewrite history on main" rule means that red run stays
+in the log rather than getting squashed away; every commit after it is
+green, including the final state. Will typecheck each commit before it's
+pushed going forward, not just the end state.
+
 ## What's still open
 
 Deploying with a real `GROQ_API_KEY` as a Fly secret and a manual
