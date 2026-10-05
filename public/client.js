@@ -44,12 +44,21 @@
     }
   }
 
+  const onlineCountEl = document.getElementById("online-count");
+  function renderOnlineCount(online) {
+    if (!onlineCountEl) return;
+    onlineCountEl.textContent = `👥 ${online} ${online === 1 ? "person" : "people"} online`;
+  }
+
   const lastId = section.dataset.lastId ? Number(section.dataset.lastId) : 0;
   const source = new EventSource(`/rooms/${roomCode}/stream?after=${lastId}`);
   source.onmessage = (event) => {
     if (!event.data) return; // heartbeat
     appendEntry(JSON.parse(event.data));
   };
+  source.addEventListener("presence", (event) => {
+    renderOnlineCount(JSON.parse(event.data).online);
+  });
 
   const form = document.getElementById("ask-form");
   if (!form) return;

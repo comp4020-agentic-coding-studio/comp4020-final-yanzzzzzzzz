@@ -76,6 +76,13 @@ it("broadcasts an asked question to the room's live transcript", async () => {
   expect(html).toContain("this is a test question");
 });
 
+it("shows an online count on the room page", async () => {
+  const { code } = await createRoom();
+  const { html } = await visitRoom(code);
+  // Nobody has opened the room's SSE stream in this test, so it starts at 0.
+  expect(html).toContain("0 people online");
+});
+
 it("lists a newly created room on the homepage so others can join it", async () => {
   const { code } = await createRoom();
   const res = await fetch(new URL("/", baseUrl));

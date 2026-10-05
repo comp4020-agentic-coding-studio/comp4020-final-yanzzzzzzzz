@@ -12,7 +12,7 @@ import {
   pickRandomPuzzle,
 } from "../db.ts";
 import { judge } from "../llm.ts";
-import { broadcast, subscribe } from "../sse.ts";
+import { broadcast, connectionCount, subscribe } from "../sse.ts";
 import { getOrCreateSessionId } from "../session.ts";
 import { roomPage } from "../render/room.ts";
 import { LOBBY_CHANNEL } from "./lobby.ts";
@@ -41,7 +41,8 @@ rooms.get("/rooms/:code", (c) => {
     ? "Slow down — the same person has to wait a few seconds between questions."
     : undefined;
 
-  return c.html(roomPage({ room, puzzle, transcript, label, notice }));
+  const onlineCount = connectionCount(room.id);
+  return c.html(roomPage({ room, puzzle, transcript, label, notice, onlineCount }));
 });
 
 rooms.post("/rooms/:code/ask", async (c) => {
@@ -118,6 +119,10 @@ rooms.get("/rooms/:code/stream", (c) => {
 
   const afterId = Number(c.req.query("after") ?? "0");
 
+  const broadcastOnlineCount = () => {
+    broadcast(room.id, Date.now(), { online: connectionCount(room.id) }, "presence");
+  };
+
   return streamSSE(c, async (stream) => {
     for (const entry of getTranscript(room.id, afterId)) {
       await stream.writeSSE({ id: String(entry.id), data: JSON.stringify(entry) });
@@ -132,6 +137,8 @@ rooms.get("/rooms/:code/stream", (c) => {
         closed = true;
       },
     });
+    // Tells every connected client (including this one) the new total.
+    broadcastOnlineCount();
 
     // Fly's proxy and other intermediaries can time out an idle connection;
     // a periodic comment keeps the stream alive without the client parsing it.
@@ -144,6 +151,7 @@ rooms.get("/rooms/:code/stream", (c) => {
         closed = true;
         clearInterval(heartbeat);
         unsubscribe();
+        broadcastOnlineCount();
         resolve();
       });
     });
