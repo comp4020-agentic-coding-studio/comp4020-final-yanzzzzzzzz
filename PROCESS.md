@@ -121,6 +121,23 @@ against `puzzle.solution` keeps working unchanged. `海龟汤` itself stays as a
 proper noun in this file and the README, labelling the genre the game is
 built on.
 
+## A real bug: translated code, unchanged production data
+
+After the English translation deployed, the live room still showed a
+Chinese puzzle premise. Root cause: `seedPuzzlesIfEmpty()` only inserted
+`SEED_PUZZLES` when the `puzzles` table was empty, and the very first real
+deploy to the Fly volume (today, since the repo was private until the ship)
+had already populated that table from the pre-translation Chinese
+`src/data/puzzles.ts`. Every later deploy shipped new code but never
+touched the rows already sitting on `/data` — translating the seed data and
+redeploying did nothing to content that persistence was, correctly, no
+longer willing to overwrite. The fix makes puzzle seeding reconcile against
+the code on every boot instead of a one-time "if empty" insert: puzzle text
+is reference content tracked in git, not user data, so it's fine to resync
+it, and any room whose puzzle fell out of that content gets cleared with
+it, since that only happens when the puzzle bank itself changed underneath
+it (there was no real user data yet to lose).
+
 ## What's still open
 
 Deploying with a real `GROQ_API_KEY` as a Fly secret and a manual
