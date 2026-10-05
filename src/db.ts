@@ -56,11 +56,32 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS qa_entries_room ON qa_entries(room_id, id);
 `);
 
+// Reconciles the seed puzzles against src/data/puzzles.ts on every boot,
+// rather than inserting once when the table is empty. An "only if empty"
+// seed silently freezes the table at whatever content shipped first — a
+// later edit to SEED_PUZZLES (e.g. a translation) would update the code but
+// never reach rows already sitting on the /data volume. Puzzle text is
+// reference content, not user data, so it's fine to resync it; any room
+// still pointing at a stale puzzle id is cleared along with it, since a
+// mismatch here only happens when the puzzle bank itself changed underneath
+// existing rooms.
 function seedPuzzlesIfEmpty(): void {
-  const { count } = db.prepare("SELECT COUNT(*) AS count FROM puzzles").get() as {
-    count: number;
-  };
-  if (count > 0) return;
+  const rows = db.prepare("SELECT premise, solution FROM puzzles").all() as {
+    premise: string;
+    solution: string;
+  }[];
+  const current = new Set(rows.map((r) => `${r.premise}\u0000${r.solution}`));
+  const wanted = new Set(SEED_PUZZLES.map((p) => `${p.premise}\u0000${p.solution}`));
+  const upToDate =
+    current.size === wanted.size && [...current].every((entry) => wanted.has(entry));
+  if (upToDate) return;
+
+  db.exec(`
+    DELETE FROM qa_entries;
+    DELETE FROM room_participants;
+    DELETE FROM rooms;
+    DELETE FROM puzzles;
+  `);
   const insert = db.prepare(
     "INSERT INTO puzzles (id, premise, solution) VALUES (?, ?, ?)",
   );
