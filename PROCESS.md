@@ -87,7 +87,7 @@ A few choices worth recording because they weren't obvious going in:
 
 While getting `pnpm check` green, `spec/rooms.test.ts`'s "distinguishes
 multiple anonymous sessions" test failed: a fresh room's first visitor came
-back labelled `匿名侦探#2`, not `#1`. Tracing it through, the test's own
+back labelled `Anonymous Detective#2`, not `#1`. Tracing it through, the test's own
 `createRoom()` helper visited the room page once already (purely to extract
 a session cookie for other tests), which itself registered an anonymous
 participant and consumed the `#1` slot before the test's own "first visitor"
@@ -97,10 +97,33 @@ time; the test was shifting its own count by one. Fixed by splitting
 helper (visits as a new anonymous session), so no test accidentally
 pre-consumes a participant slot it didn't mean to.
 
+## Shipping and translating to English
+
+Shipping flipped the repo public and ran `checks` via `workflow_dispatch`
+(the flip itself triggers no push event). That run was the *first* time the
+`check` job's `docker build`/`docker run` step ever executed — it only runs
+once the repo is public (`if: !github.event.repository.private`), so while
+private, `pnpm check` locally was the only signal. It passed, and
+`verify-deploy.sh` independently confirmed the live Fly URL serves the page
+and its one asset, not just a 200. The deployed commit is tagged `crit-8`.
+
+Separately, the app launched entirely in Chinese — the 海龟汤 genre name, the
+UI chrome, the nine seed puzzles, and the AI judge's prompt and fallback
+strings. Asked to make it English, the choice was full translation over
+UI-chrome-only: translating just the buttons and labels but leaving the
+puzzle premises and the judge's own replies in Chinese would mean the actual
+content a player reads mid-game still wasn't in the requested language, which
+defeats the point. The nine puzzles are faithful English retellings of the
+same lateral-thinking riddles (same premise/solution pairs — these are a
+well-known genre in English too, usually called "turtle soup" or "situation
+puzzles" there as well), not new content, so the mock judge's keyword match
+against `puzzle.solution` keeps working unchanged. `海龟汤` itself stays as a
+proper noun in this file and the README, labelling the genre the game is
+built on.
+
 ## What's still open
 
-Deploying with a real `GROQ_API_KEY` as a Fly secret, a manual keyboard-only
-and throttled-network pass in a real browser (this environment has neither a
-GUI browser nor a Docker daemon available), and confirming the actual
-`docker build`/`docker run` path matches what CI runs — all noted here
-rather than silently assumed done.
+Deploying with a real `GROQ_API_KEY` as a Fly secret and a manual
+keyboard-only / throttled-network pass in a real browser (this environment
+has neither a GUI browser nor a Docker daemon available) — noted here rather
+than silently assumed done.

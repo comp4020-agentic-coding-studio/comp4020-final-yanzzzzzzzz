@@ -1,4 +1,4 @@
-# 海龟汤协作解谜室
+# Turtle Soup Puzzle Room
 
 A multiplayer, AI-judged lateral-thinking puzzle room (海龟汤 / "turtle soup").
 An AI judge holds the full solution to a puzzle and only ever reveals a
@@ -17,7 +17,7 @@ and persistent. This app isn't three checkboxes bolted onto an unrelated idea
 - **Multi-user.** A puzzle room only works if the people in it are
   distinguishable — otherwise "someone already asked that" has no meaning.
   Each visitor gets an anonymous session cookie on first load and a
-  room-scoped nickname ("匿名侦探#3") the first time they speak in that room.
+  room-scoped nickname ("Anonymous Detective#3") the first time they speak in that room.
   No account, no login — the barrier to joining a room is "open the link."
 - **Real-time.** The point of a shared transcript is that everyone sees a
   verdict land the moment it does, not on their next manual refresh. The room
@@ -62,8 +62,8 @@ room flips to solved.
 
 A per-session cooldown throttles how fast one person can ask questions, and a
 10-second timeout guards every call: if Groq doesn't answer in time, the room
-gets a plain "AI 暂时没有回应，请再试一次" message instead of hanging
-silently. `GROQ_API_KEY` is a Fly secret in production; with it unset — which
+gets a plain "The AI judge didn't respond in time, please try again shortly"
+message instead of hanging silently. `GROQ_API_KEY` is a Fly secret in production; with it unset — which
 is always true in CI, since the course's own LLM proxy key is
 network-restricted to ANU and unreachable from a Fly machine or a GitHub
 runner — the app falls back to a small deterministic mock judge. That keeps
