@@ -23,4 +23,8 @@
     if (!event.data) return; // heartbeat
     addRoom(JSON.parse(event.data).code);
   };
+
+  // See client.js's pagehide listener — same reasoning, so a room's lobby
+  // connection doesn't linger past the point the visitor actually left.
+  window.addEventListener("pagehide", () => source.close());
 })();

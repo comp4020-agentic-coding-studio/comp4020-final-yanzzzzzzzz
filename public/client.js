@@ -60,6 +60,13 @@
     renderOnlineCount(JSON.parse(event.data).online);
   });
 
+  // Navigating away (e.g. clicking a link) doesn't necessarily tear down an
+  // in-flight EventSource right away — the browser may leave it dangling for
+  // a while before the server notices it's gone. Closing it explicitly on
+  // pagehide tells the server immediately, so the online count drops without
+  // a delay.
+  window.addEventListener("pagehide", () => source.close());
+
   const form = document.getElementById("ask-form");
   if (!form) return;
   const input = form.querySelector("#question");
