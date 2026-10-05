@@ -185,6 +185,29 @@ nicknames) — "online" should mean online. Broadcasting it over a named
 small but necessary part: without a way to tell the two apart, `client.js`
 would try to render a `{ online: n }` payload as a transcript entry.
 
+## Online count not dropping — a navigation gap, not a counting bug
+
+Feedback: closing a room's last tab correctly dropped the online count,
+but clicking the brand link back to the homepage didn't. Before touching
+code, checked whether the counting itself was actually wrong: simulated 4
+concurrent connections to one room plus an independent observer connection
+and closed them one at a time with a client-side `AbortController`, both
+against the local server and the live Fly deploy. Every close broadcast
+the correct new number to the observer immediately — the server-side
+logic was right both times.
+
+The gap was specifically in *when* a real browser tells the server a
+connection is gone. Closing a tab outright destroys its whole
+networking context immediately; clicking a link away just stops the page
+from reading the stream; the browser isn't obligated to abort that
+in-flight request right away; and only when it eventually does does the
+server even get a chance to notice. Fix
+([`a924da3`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-yanzzzzzzzz/commit/a924da3))
+was on the client: close the `EventSource` explicitly on the `pagehide`
+event (fires on any kind of navigating-away, including a plain link
+click), so the server is told the moment the user leaves instead of
+whenever the browser gets around to tearing the connection down.
+
 ## What's still open
 
 Deploying with a real `GROQ_API_KEY` as a Fly secret and a manual
