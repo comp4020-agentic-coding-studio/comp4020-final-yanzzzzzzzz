@@ -171,6 +171,20 @@ in the log rather than getting squashed away; every commit after it is
 green, including the final state. Will typecheck each commit before it's
 pushed going forward, not just the end state.
 
+## Online count, from the same connection set already tracked
+
+Another piece of feedback: the room should show how many people are
+actually in it. `src/sse.ts` already keeps a `Set<Client>` per channel for
+delivering the transcript — its size *is* the online count, so
+`connectionCount()` is a one-line read, not new state
+([`2535743`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-yanzzzzzzzz/commit/2535743)).
+The one real decision was picking "currently connected" over "has ever
+joined" (the number `room_participants` already gives, used for
+nicknames) — "online" should mean online. Broadcasting it over a named
+`presence` SSE event, rather than the default one entries use, was the
+small but necessary part: without a way to tell the two apart, `client.js`
+would try to render a `{ online: n }` payload as a transcript entry.
+
 ## What's still open
 
 Deploying with a real `GROQ_API_KEY` as a Fly secret and a manual
