@@ -147,6 +147,12 @@ export function createRoom(puzzleId: string): Room {
   return { id, code, puzzle_id: puzzleId, status: "active" };
 }
 
+export function listActiveRooms(limit = 20): { code: string }[] {
+  return db
+    .prepare("SELECT code FROM rooms WHERE status = 'active' ORDER BY created_at DESC LIMIT ?")
+    .all(limit) as { code: string }[];
+}
+
 export function getRoomByCode(code: string): Room | undefined {
   return db
     .prepare("SELECT id, code, puzzle_id, status FROM rooms WHERE code = ?")

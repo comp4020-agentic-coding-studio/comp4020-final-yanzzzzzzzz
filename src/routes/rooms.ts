@@ -15,6 +15,7 @@ import { judge } from "../llm.ts";
 import { broadcast, subscribe } from "../sse.ts";
 import { getOrCreateSessionId } from "../session.ts";
 import { roomPage } from "../render/room.ts";
+import { LOBBY_CHANNEL } from "./lobby.ts";
 
 const COOLDOWN_MS = 5_000;
 
@@ -23,6 +24,7 @@ export const rooms = new Hono();
 rooms.post("/rooms", (c) => {
   const puzzle = pickRandomPuzzle();
   const room = createRoom(puzzle.id);
+  broadcast(LOBBY_CHANNEL, room.id, { code: room.code });
   return c.redirect(`/rooms/${room.code}`, 303);
 });
 
@@ -77,7 +79,7 @@ rooms.post("/rooms/:code/ask", async (c) => {
       verdict: null,
       label: null,
     });
-    broadcast(room.id, entry);
+    broadcast(room.id, entry.id, entry);
     return c.redirect(`/rooms/${room.code}`, 303);
   }
 
@@ -89,7 +91,7 @@ rooms.post("/rooms/:code/ask", async (c) => {
     verdict: verdict.verdict,
     label,
   });
-  broadcast(room.id, questionEntry);
+  broadcast(room.id, questionEntry.id, questionEntry);
 
   if (verdict.reply) {
     const replyEntry = insertEntry({
@@ -100,7 +102,7 @@ rooms.post("/rooms/:code/ask", async (c) => {
       verdict: null,
       label: null,
     });
-    broadcast(room.id, replyEntry);
+    broadcast(room.id, replyEntry.id, replyEntry);
   }
 
   if (verdict.verdict === "correct") {
