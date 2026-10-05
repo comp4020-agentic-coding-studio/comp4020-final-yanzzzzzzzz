@@ -29,7 +29,10 @@ and persistent. This app isn't three checkboxes bolted onto an unrelated idea
   page holds an `EventSource` (Server-Sent Events) connection and appends new
   entries as they're broadcast. The homepage holds its own `EventSource`
   against a separate "lobby" channel on the same pub/sub, so a new case
-  appears there live too, without reinventing the mechanism.
+  appears there live too, without reinventing the mechanism. The room page
+  also shows a live "N people online" count, computed from how many of those
+  connections are currently open — not from how many people have ever spoken
+  in the room, which is a different number already used for nicknames.
 - **Persists.** A case that vanishes the moment the single Fly machine goes
   to sleep (which it does, by design, between visits) isn't a case anyone can
   come back to. Every room, participant, and transcript entry is written to a
