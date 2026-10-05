@@ -138,6 +138,25 @@ it, and any room whose puzzle fell out of that content gets cleared with
 it, since that only happens when the puzzle bank itself changed underneath
 it (there was no real user data yet to lose).
 
+## A shared lobby, from user feedback
+
+After shipping, feedback was that the app didn't actually feel multiplayer:
+hitting "start a new case" always made a *new* room, so two people on the
+homepage at once each ended up alone unless one manually sent the other a
+link. Fixed by turning the homepage into a lobby — every open case is
+listed as a join link, and a new one appears live on everyone else's
+homepage the moment it's created
+([`1b25e42`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-yanzzzzzzzz/commit/1b25e42),
+[`05e3929`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-yanzzzzzzzz/commit/05e3929)).
+
+The real decision was reuse vs. a second mechanism: `src/sse.ts`'s pub/sub
+was already generic enough to key by any channel name, not just a room id,
+so a `"lobby"` channel plus one `broadcast()` call on room creation covers
+it — no polling, no new infra, consistent with the one real-time mechanism
+the brief is judged on. Deliberately not live: a solved room leaving the
+lobby, which would mean broadcasting on every solve too for a case (a
+stale-but-harmless join link for a few minutes) that doesn't block anyone.
+
 ## What's still open
 
 Deploying with a real `GROQ_API_KEY` as a Fly secret and a manual

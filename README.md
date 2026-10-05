@@ -8,6 +8,11 @@ live in one shared transcript that everyone in the room is watching at the
 same time. There are no private per-player threads — solving the case is a
 group effort, visible to the whole room as it happens.
 
+The homepage doubles as a lobby: every currently open case is listed there as
+a join link, and a new case appears on everyone else's homepage the moment
+someone starts one, live — nobody has to already have the room's link to end
+up playing together.
+
 ## Why this shape
 
 The brief fixes three things any submission has to be: multi-user, real-time,
@@ -22,7 +27,9 @@ and persistent. This app isn't three checkboxes bolted onto an unrelated idea
 - **Real-time.** The point of a shared transcript is that everyone sees a
   verdict land the moment it does, not on their next manual refresh. The room
   page holds an `EventSource` (Server-Sent Events) connection and appends new
-  entries as they're broadcast.
+  entries as they're broadcast. The homepage holds its own `EventSource`
+  against a separate "lobby" channel on the same pub/sub, so a new case
+  appears there live too, without reinventing the mechanism.
 - **Persists.** A case that vanishes the moment the single Fly machine goes
   to sleep (which it does, by design, between visits) isn't a case anyone can
   come back to. Every room, participant, and transcript entry is written to a
@@ -86,6 +93,8 @@ local runs.
 
 A historical case archive, multiple difficulty levels or user-submitted
 puzzles, room moderation or a spectator-only mode, and an explicit "give me a
-hint" command beyond yes/no/irrelevant. Noting what was cut, and why, is part
-of the process record in `PROCESS.md` — the brief rewards one idea taken all
-the way over several built halfway.
+hint" command beyond yes/no/irrelevant. A room also doesn't disappear from
+the lobby live the instant it's solved — only on the next homepage load.
+Noting what was cut, and why, is part of the process record in
+`PROCESS.md` — the brief rewards one idea taken all the way over several
+built halfway.
