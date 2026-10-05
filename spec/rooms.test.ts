@@ -76,6 +76,13 @@ it("broadcasts an asked question to the room's live transcript", async () => {
   expect(html).toContain("this is a test question");
 });
 
+it("lists a newly created room on the homepage so others can join it", async () => {
+  const { code } = await createRoom();
+  const res = await fetch(new URL("/", baseUrl));
+  const html = await res.text();
+  expect(html).toContain(`/rooms/${code}`);
+});
+
 it("never leaks a puzzle's solution to the client while the room is active", async () => {
   const { code } = await createRoom();
   const { html } = await visitRoom(code);
