@@ -1,18 +1,22 @@
+/* Navy / cream / gold "detective" palette. Every component below consumes
+   these four variables (never a hardcoded color), so both modes repaint for
+   free — light mode reads as a case file on cream paper, dark mode as the
+   same file under a desk lamp at night, same gold accent either way. */
 :root {
   color-scheme: light dark;
-  --fg: #1a1a1a;
-  --bg: #fdfdfb;
-  --accent: #7a3b2e;
-  --border: #ddd6ce;
+  --fg: #1b2440;
+  --bg: #f6f0e1;
+  --accent: #b8860b;
+  --border: #d9cdb0;
   font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --fg: #ececec;
-    --bg: #15120f;
-    --accent: #e0a38c;
-    --border: #3a342c;
+    --fg: #f1e9d2;
+    --bg: #0d1326;
+    --accent: #e3b23c;
+    --border: #2b3454;
   }
 }
 
@@ -80,7 +84,9 @@ button:disabled {
   cursor: wait;
 }
 
-input[type="text"] {
+input[type="text"],
+select,
+textarea {
   font: inherit;
   width: 100%;
   padding: 0.6rem;
@@ -90,9 +96,105 @@ input[type="text"] {
   color: var(--fg);
 }
 
+textarea {
+  resize: vertical;
+}
+
+select:focus-visible,
+textarea:focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.button-link {
+  display: inline-block;
+  background: var(--accent);
+  color: var(--bg);
+  border-radius: 0.4rem;
+  padding: 0.6rem 1.2rem;
+  text-decoration: none;
+  font-weight: 600;
+}
+
 .hero {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  padding: 1.5rem 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.hero-intro h1 {
+  margin: 0 0 0.2rem;
+  font-size: 1.4rem;
+}
+
+.hero-intro p {
+  margin: 0;
+  opacity: 0.8;
+}
+
+.room {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1.5rem;
+  align-items: start;
+}
+
+@media (min-width: 54rem) {
+  .room {
+    grid-template-columns: minmax(0, 1fr) 16rem;
+  }
+}
+
+.room-sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.room-subtitle {
+  margin: 0 0 1rem;
+  opacity: 0.85;
+}
+
+.room-subtitle .room-code code {
+  background: color-mix(in srgb, var(--accent) 12%, var(--bg));
+  padding: 0.1rem 0.4rem;
+  border-radius: 0.3rem;
+}
+
+.waiting-room {
+  padding: 1rem;
+  margin-bottom: 1rem;
+  border: 1px dashed var(--border);
+  border-radius: 0.5rem;
   text-align: center;
-  padding: 3rem 0;
+}
+
+.host-badge {
+  margin-right: 0.1rem;
+}
+
+.transfer-host-form {
+  display: inline;
+  margin-left: 0.4rem;
+}
+
+.transfer-host-button {
+  font-size: 0.75rem;
+  padding: 0.15rem 0.5rem;
+  background: transparent;
+  color: var(--accent);
+  border: 1px solid var(--accent);
+}
+
+.author-note {
+  font-size: 0.85rem;
+  opacity: 0.8;
+  font-style: italic;
 }
 
 .premise {
@@ -146,14 +248,17 @@ input[type="text"] {
   padding: 0;
   margin: 0 0 1rem;
   display: flex;
-  flex-wrap: wrap;
+  flex-direction: column;
   gap: 0.4rem;
 }
 
 .members li {
-  padding: 0.2rem 0.6rem;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  padding: 0.3rem 0.6rem;
   border: 1px solid var(--border);
-  border-radius: 999px;
+  border-radius: 0.4rem;
   background: color-mix(in srgb, var(--accent) 8%, var(--bg));
   font-size: 0.85rem;
 }
@@ -199,6 +304,10 @@ input[type="text"] {
   flex-wrap: wrap;
   gap: 0.5rem;
   align-items: flex-end;
+  position: sticky;
+  bottom: 0;
+  padding: 0.75rem 0;
+  background: var(--bg);
 }
 
 #ask-form label {
@@ -235,15 +344,21 @@ input[type="text"] {
   list-style: none;
   padding: 0;
   margin: 1rem 0 0;
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0.75rem;
 }
 
-.lobby-list li {
-  padding: 0.6rem 1rem;
-  border: 1px solid var(--border);
-  border-radius: 0.5rem;
+@media (min-width: 40rem) {
+  .lobby-list {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (min-width: 64rem) {
+  .lobby-list {
+    grid-template-columns: repeat(3, 1fr);
+  }
 }
 
 .lobby-empty {
@@ -253,9 +368,8 @@ input[type="text"] {
 .hero-actions {
   display: flex;
   flex-wrap: wrap;
-  justify-content: center;
+  align-items: center;
   gap: 1rem;
-  margin-top: 1rem;
 }
 
 .join-form {
@@ -273,31 +387,84 @@ input[type="text"] {
 
 .case-card {
   display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 1rem;
+  flex-direction: column;
+  gap: 0.6rem;
+  padding: 1rem;
+  border: 1px solid var(--border);
+  border-radius: 0.6rem;
+  background: color-mix(in srgb, var(--accent) 4%, var(--bg));
 }
 
 .case-card h3 {
-  margin: 0 0 0.25rem;
+  margin: 0;
   font-size: 1.05rem;
+}
+
+.case-card-puzzle {
+  margin: 0;
+  font-size: 0.9rem;
+  opacity: 0.85;
 }
 
 .case-card-meta {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.75rem;
+  gap: 0.6rem;
   margin: 0;
-  font-size: 0.85rem;
+  font-size: 0.8rem;
   opacity: 0.8;
 }
 
 .case-join {
-  flex-shrink: 0;
+  align-self: flex-start;
   background: var(--accent);
   color: var(--bg);
   border-radius: 0.4rem;
   padding: 0.5rem 1rem;
+  font-weight: 600;
+}
+
+.create-tabs {
+  display: flex;
+  gap: 0.5rem;
+  margin: 1rem 0 1.5rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.create-tabs a {
+  padding: 0.5rem 0.9rem;
+  border-bottom: 2px solid transparent;
+}
+
+.create-tabs a.active {
+  border-bottom-color: var(--accent);
+  font-weight: 600;
+}
+
+.create-case form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  max-width: 32rem;
+}
+
+.puzzle-preview {
+  padding: 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 0.4rem;
+  background: color-mix(in srgb, var(--accent) 6%, var(--bg));
+  font-style: italic;
+}
+
+.checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font: inherit;
+}
+
+.checkbox-label input {
+  width: auto;
 }
 
 .profile form {

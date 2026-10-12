@@ -143,25 +143,29 @@ export function roomPage(args: {
     `${room.name ?? `Case ${room.code}`} · Turtle Soup Puzzle Room`,
     `
     <section class="room" data-room-code="${room.code}" data-last-id="${transcript.at(-1)?.id ?? 0}" data-solved="${solved}" data-host-session-id="${escapeHtml(room.host_session_id ?? "")}" data-viewer-session-id="${escapeHtml(viewerSessionId)}" data-is-host="${isHost}">
-      <h1>${heading}</h1>
-      <p class="room-subtitle">
-        playing <strong>${escapeHtml(puzzle.title)}</strong>
-        · <span class="room-code">Code: <code>${room.code}</code></span>
-      </p>
-      <p class="premise">${escapeHtml(puzzle.premise)}</p>
-      ${solved ? recapHtml(room, puzzle, transcript, participants) : ""}
-      ${waiting ? waitingHtml(room, isHost) : ""}
-      <p class="whoami">You are <strong>${escapeHtml(label)}</strong></p>
-      <p class="online-count" id="online-count">${onlineLabel(onlineCount)}</p>
-      ${membersHtml(members, room, isHost)}
-      ${notice ? `<p class="notice" role="status">${escapeHtml(notice)}</p>` : ""}
-      <p class="judging" id="judging-status" role="status" hidden></p>
+      <div class="room-main">
+        <h1>${heading}</h1>
+        <p class="room-subtitle">
+          playing <strong>${escapeHtml(puzzle.title)}</strong>
+          · <span class="room-code">Code: <code>${room.code}</code></span>
+        </p>
+        <p class="premise">${escapeHtml(puzzle.premise)}</p>
+        ${solved ? recapHtml(room, puzzle, transcript, participants) : ""}
+        ${waiting ? waitingHtml(room, isHost) : ""}
+        ${notice ? `<p class="notice" role="status">${escapeHtml(notice)}</p>` : ""}
+        <p class="judging" id="judging-status" role="status" hidden></p>
 
-      <ul class="transcript" id="transcript">
-        ${transcript.map(entryHtml).join("\n")}
-      </ul>
+        <ul class="transcript" id="transcript">
+          ${transcript.map(entryHtml).join("\n")}
+        </ul>
 
-      ${solved || waiting ? "" : askFormHtml(room, isAuthor)}
+        ${solved || waiting ? "" : askFormHtml(room, isAuthor)}
+      </div>
+      <aside class="room-sidebar">
+        <p class="whoami">You are <strong>${escapeHtml(label)}</strong></p>
+        <p class="online-count" id="online-count">${onlineLabel(onlineCount)}</p>
+        ${membersHtml(members, room, isHost)}
+      </aside>
     </section>
     <script id="initial-transcript" type="application/json">${JSON.stringify(transcript)}</script>
     <script src="/client.js"></script>

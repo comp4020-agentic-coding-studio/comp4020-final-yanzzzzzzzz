@@ -487,6 +487,40 @@ with "has ever joined this room" (what membership for a permissions check
 should mean) — fixed by checking `room_participants` directly
 (`isParticipant()`), not by loosening the test.
 
+## A theme and layout pass, same priority as the functional work
+
+The same review asked for a visual rework (a navy/cream/gold "detective"
+palette, a condensed lobby header instead of a tall hero block, a
+multi-column responsive lobby grid, and a two-column room layout) alongside
+the host/puzzle-authoring work above — the user set these as equal priority
+rather than sequencing one after the other.
+
+Kept the same four CSS custom properties (`--fg`, `--bg`, `--accent`,
+`--border`) rather than introducing new ones: every component already
+written against them (from the very first commit through today's work)
+repaints under the new palette with zero per-component changes, in both
+`prefers-color-scheme` modes. The lobby's `.lobby-list` and room's `.room`
+both move from a single flex column to CSS Grid with a `@media
+(min-width: ...)` breakpoint — 1/2/3 columns for the lobby, a content column
+plus a 16rem members sidebar for a room — using plain grid auto-placement
+(no `order`/named `grid-area` tricks), so DOM order and visual order stay
+identical: a screen reader or keyboard tab sequence sees the same order a
+sighted mouse user does, matching the project's own keyboard-first quality
+bar. The ask-form uses `position: sticky; bottom: 0` within its own column
+rather than `position: fixed` on the viewport, so it stays reachable near
+the bottom while scrolling a long transcript without overlapping the
+sidebar or breaking on a narrow screen.
+
+**Not verified in an actual browser** — this environment has no GUI browser
+and the one available headless Chromium build (`chromium-1243`, already
+cached from a prior Playwright use) is missing a system shared library
+(`libnspr4.so`) that isn't installable without `sudo` access this session
+doesn't have passwordless. Verified instead via the rendered HTML structure
+directly (grid containers, sidebar nesting, breakpoint rules) and the
+existing `pnpm check` suite, which exercises every page's markup but not its
+rendered layout. A real resize-mid-interaction and keyboard-tab-order pass
+in an actual browser is recorded as still outstanding, not assumed done.
+
 ## What's still open
 
 **`GROQ_API_KEY` is not set on the live Fly app.** Posting a question to the
