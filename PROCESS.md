@@ -274,9 +274,44 @@ being stuck, not as a judge that's still thinking. This is also this week's
 second candidate for "what reaches other people live" — the pending state
 itself is now real-time, not just the resolved answer.
 
+## Verifying the real deployment, for crit-9
+
+Assumed CI's `deploy` job (`.github/workflows/checks.yml`, gated on the repo
+being public and non-template) would need a local `flyctl` login to check on
+— it doesn't. It already runs on every push to `main` using a `FLY_API_TOKEN`
+GitHub secret the course provisioned, and had already redeployed both of
+this week's commits by the time I checked (`gh run view` on each push's run
+showed `check` and `deploy` both green, finishing in under a minute). No
+manual deploy step was needed; I'd been about to go hunting for a way to
+auth `flyctl` locally before realizing the live site was already current.
+
+With that confirmed, ran two checks directly against
+`https://comp4020-final-yanzzzzzzzz.fly.dev` (not localhost) to verify
+real-time actually holds on the deployed shape, not just in a local dev
+process:
+
+- **Transcript propagation**: opened one SSE connection as session B, posted
+  a question as session A, and timed how long until B's stream received both
+  the question entry and the judge's reply — **17ms**.
+- **Presence propagation**: opened a connection as A, then had B connect and
+  disconnect, timing how long until A's own stream reflected each change —
+  **16ms** for B joining, **29ms** for B leaving.
+
+Both several orders of magnitude inside the brief's "about a second." These
+numbers also indirectly confirm the deployed app's own cross-connection
+broadcast path works end to end on Fly's actual infrastructure, not just
+against Node's loopback interface locally.
+
 ## What's still open
 
-Deploying with a real `GROQ_API_KEY` as a Fly secret and a manual
-keyboard-only / throttled-network pass in a real browser (this environment
-has neither a GUI browser nor a Docker daemon available) — noted here rather
-than silently assumed done.
+**`GROQ_API_KEY` is not set on the live Fly app.** Posting a question to the
+deployed site returned "Yes (mock judge: keyword match)" — the literal mock
+fallback string from `src/llm.ts`, which only runs when the key is absent.
+The app has been serving the keyword-matching mock judge in production, not
+the real AI, which `src/llm.ts`'s own comment explicitly says should never
+happen outside CI. Needs `flyctl secrets set GROQ_API_KEY=... -a
+comp4020-final-yanzzzzzzzz` with a real key before relying on the judge's
+actual quality at the crit.
+
+A manual keyboard-only / throttled-network pass in a real browser (this
+environment has no GUI browser available) is still open as well.
