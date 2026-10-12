@@ -1,13 +1,6 @@
-import type { Puzzle, QaEntry, Room } from "../db.ts";
+import type { Profile, Puzzle, QaEntry, Room } from "../db.ts";
 import { layout } from "./layout.ts";
-
-function escapeHtml(s: string): string {
-  return s
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
-}
+import { escapeHtml } from "./html.ts";
 
 const VERDICT_LABEL: Record<string, string> = {
   yes: "Yes",
@@ -46,8 +39,9 @@ export function roomPage(args: {
   notice?: string;
   onlineCount: number;
   members: string[];
+  profile: Profile;
 }): string {
-  const { room, puzzle, transcript, label, notice, onlineCount, members } = args;
+  const { room, puzzle, transcript, label, notice, onlineCount, members, profile } = args;
   const solved = room.status === "solved";
 
   return layout(
@@ -87,5 +81,6 @@ export function roomPage(args: {
     <script id="initial-transcript" type="application/json">${JSON.stringify(transcript)}</script>
     <script src="/client.js"></script>
     `,
+    profile,
   );
 }

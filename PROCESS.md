@@ -302,6 +302,44 @@ numbers also indirectly confirm the deployed app's own cross-connection
 broadcast path works end to end on Fly's actual infrastructure, not just
 against Node's loopback interface locally.
 
+## A chosen nickname, without turning this into an account system
+
+The same review that flagged the missing member list also pointed out that
+every player still shows up as "Anonymous Detective#N" with no way to pick
+an identity that persists across visits. Asked for: a one-time nickname and
+an avatar on first visit, editable later, carried into the transcript and
+member list, plus a one-line bio and simple participation/solved counts —
+explicitly *not* a login system.
+
+Added a `/profile` page (no new auth: it reads/writes the same anonymous
+`sessions` row the cookie already identifies) with a nickname field, a fixed
+8-emoji avatar picker (not free-form upload or a URL — no image hosting, no
+moderation surface, and a fixed set means a submitted avatar can be
+rejected outright if it isn't one of the eight, rather than trusted and
+escaped), and a bio line. `sessions` gained three nullable columns
+(`nickname`, `avatar`, `bio`), added with a guarded `ALTER TABLE` that
+checks `PRAGMA table_info` first, since re-running `ADD COLUMN` on a /data
+volume that already has it would error.
+
+The integration choice: rather than threading a second "avatar" field
+through `QaEntry`, SSE's `Client` type, and every rendering function that
+already passes a plain label string around, `displayLabel(roomId,
+sessionId)` in `src/db.ts` bakes the avatar into that same string
+(`"🐢 Riko"` instead of `"Riko"` plus a separate icon) before it ever reaches
+the transcript, the member list, or the "you are" line. One string, not two
+fields threaded through four files — the avatar shows up everywhere a label
+already did, for free. The cost: a nickname/avatar change only affects new
+messages going forward, not the label baked into already-sent transcript
+entries — the same "history reflects what was true when it happened"
+tradeoff a display name change makes in any chat app, not a bug.
+`ensureParticipantLabel` (the `#N` auto-label) still always runs first, even
+when a nickname overrides what's displayed, so participation counts and the
+numbering stay accurate for sessions that never set a nickname.
+
+Stats (`profileStats()`) are computed from existing tables — `COUNT(DISTINCT
+room_id)` in `room_participants` for "joined", joined against `rooms.status
+= 'solved'` for "solved" — no new counters to keep in sync.
+
 ## What's still open
 
 **`GROQ_API_KEY` is not set on the live Fly app.** Posting a question to the

@@ -2,7 +2,8 @@ import { Hono } from "hono";
 import { streamSSE } from "hono/streaming";
 import {
   createRoom,
-  ensureParticipantLabel,
+  displayLabel,
+  getProfile,
   getPuzzle,
   getRoomByCode,
   getTranscript,
@@ -35,7 +36,8 @@ rooms.get("/rooms/:code", (c) => {
   if (!puzzle) return c.notFound();
 
   const sessionId = getOrCreateSessionId(c);
-  const label = ensureParticipantLabel(room.id, sessionId);
+  const label = displayLabel(room.id, sessionId);
+  const profile = getProfile(sessionId);
   const transcript = getTranscript(room.id);
   const notice = c.req.query("cooldown")
     ? "Slow down — the same person has to wait a few seconds between questions."
@@ -43,7 +45,9 @@ rooms.get("/rooms/:code", (c) => {
 
   const onlineCount = connectionCount(room.id);
   const members = listMembers(room.id);
-  return c.html(roomPage({ room, puzzle, transcript, label, notice, onlineCount, members }));
+  return c.html(
+    roomPage({ room, puzzle, transcript, label, notice, onlineCount, members, profile }),
+  );
 });
 
 rooms.post("/rooms/:code/ask", async (c) => {
@@ -55,7 +59,7 @@ rooms.post("/rooms/:code/ask", async (c) => {
   if (!puzzle) return c.notFound();
 
   const sessionId = getOrCreateSessionId(c);
-  const label = ensureParticipantLabel(room.id, sessionId);
+  const label = displayLabel(room.id, sessionId);
 
   const body = await c.req.parseBody();
   const question = String(body.question ?? "").trim().slice(0, 200);
@@ -126,7 +130,7 @@ rooms.get("/rooms/:code/stream", (c) => {
 
   const afterId = Number(c.req.query("after") ?? "0");
   const sessionId = getOrCreateSessionId(c);
-  const label = ensureParticipantLabel(room.id, sessionId);
+  const label = displayLabel(room.id, sessionId);
 
   const broadcastPresence = () => {
     broadcast(
