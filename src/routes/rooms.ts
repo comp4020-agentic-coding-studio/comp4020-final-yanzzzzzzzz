@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import { streamSSE } from "hono/streaming";
 import {
+  countParticipants,
   createRoom,
   displayLabel,
   getProfile,
@@ -58,8 +59,9 @@ rooms.get("/rooms/:code", (c) => {
 
   const onlineCount = connectionCount(room.id);
   const members = listMembers(room.id);
+  const participants = countParticipants(room.id);
   return c.html(
-    roomPage({ room, puzzle, transcript, label, notice, onlineCount, members, profile }),
+    roomPage({ room, puzzle, transcript, label, notice, onlineCount, members, profile, participants }),
   );
 });
 

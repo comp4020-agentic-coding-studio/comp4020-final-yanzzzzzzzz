@@ -379,6 +379,38 @@ diffs, this triggered the same full reseed-and-clear-rooms path a content
 edit already does (documented earlier in this file) — expected, not a
 surprise.
 
+## A solve recap, from data already on hand
+
+Last item from the round-1 priority list: solving a case just swapped in the
+solution text with no sense of how the room got there. The recap
+(`recapHtml()` in `src/render/room.ts`) adds a question count, a participant
+count, and elapsed time, plus "play again" / "back to lobby" actions — all
+computed from data the app already had, not new tracking:
+
+- questions asked: filtering the transcript already loaded for the page by
+  `kind`, no query of its own.
+- participants: `countParticipants()`, a one-line count against
+  `room_participants` — the same table `ensureParticipantLabel` already
+  writes to.
+- elapsed time: the solved entry's own `created_at` minus the room's
+  `created_at` (added to `Room`/`getRoomByCode`/`createRoom`'s SELECTs,
+  which didn't carry it before). Both are SQLite's
+  `datetime('now')` strings, parsed with the same UTC-assume trick the
+  cooldown check already uses.
+
+Didn't add a separate "key questions" highlight reel — the full transcript
+is still right below the recap, and a short room's worth of Q&A doesn't need
+a curated summary of itself. Replay *is* scrolling down.
+
+The recap test itself was flaky on first write — failing roughly 1 run in 8,
+which matched the 1-in-8 odds of `pickRandomPuzzle()` landing on "The Dinner
+Party Soup" specifically. Root cause: that puzzle's solution contains a
+literal `"` (a quoted recipe name), which the room correctly HTML-escapes to
+`&quot;` when rendering — the test was asserting the raw, unescaped solution
+string appeared in the page, which only a quote-free puzzle would satisfy.
+Not an app bug; fixed the assertion to compare against the same escaped form
+instead of retrying until a different puzzle got picked.
+
 ## What's still open
 
 **`GROQ_API_KEY` is not set on the live Fly app.** Posting a question to the

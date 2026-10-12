@@ -109,6 +109,32 @@ input[type="text"] {
   background: color-mix(in srgb, limegreen 15%, var(--bg));
 }
 
+.recap {
+  margin-bottom: 1rem;
+}
+
+.recap-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  margin: 0.75rem 0;
+  font-size: 0.9rem;
+  opacity: 0.85;
+}
+
+.recap-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: center;
+}
+
+.recap-lobby {
+  padding: 0.6rem 1.2rem;
+  border: 1px solid var(--border);
+  border-radius: 0.4rem;
+}
+
 .whoami,
 .online-count {
   font-size: 0.9rem;
