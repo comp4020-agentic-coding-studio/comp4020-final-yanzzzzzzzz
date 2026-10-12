@@ -45,9 +45,14 @@
   }
 
   const onlineCountEl = document.getElementById("online-count");
-  function renderOnlineCount(online) {
-    if (!onlineCountEl) return;
-    onlineCountEl.textContent = `👥 ${online} ${online === 1 ? "person" : "people"} online`;
+  const membersEl = document.getElementById("members");
+  function renderPresence({ online, members }) {
+    if (onlineCountEl) {
+      onlineCountEl.textContent = `👥 ${online} ${online === 1 ? "person" : "people"} online`;
+    }
+    if (membersEl && Array.isArray(members)) {
+      membersEl.innerHTML = members.map((m) => `<li>${escapeHtml(m)}</li>`).join("");
+    }
   }
 
   const lastId = section.dataset.lastId ? Number(section.dataset.lastId) : 0;
@@ -57,7 +62,7 @@
     appendEntry(JSON.parse(event.data));
   };
   source.addEventListener("presence", (event) => {
-    renderOnlineCount(JSON.parse(event.data).online);
+    renderPresence(JSON.parse(event.data));
   });
 
   // Navigating away (e.g. clicking a link) doesn't necessarily tear down an

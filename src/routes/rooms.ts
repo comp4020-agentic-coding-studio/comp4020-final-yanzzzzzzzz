@@ -12,7 +12,7 @@ import {
   pickRandomPuzzle,
 } from "../db.ts";
 import { judge } from "../llm.ts";
-import { broadcast, connectionCount, subscribe } from "../sse.ts";
+import { broadcast, connectionCount, listMembers, subscribe } from "../sse.ts";
 import { getOrCreateSessionId } from "../session.ts";
 import { roomPage } from "../render/room.ts";
 import { LOBBY_CHANNEL } from "./lobby.ts";
@@ -42,7 +42,8 @@ rooms.get("/rooms/:code", (c) => {
     : undefined;
 
   const onlineCount = connectionCount(room.id);
-  return c.html(roomPage({ room, puzzle, transcript, label, notice, onlineCount }));
+  const members = listMembers(room.id);
+  return c.html(roomPage({ room, puzzle, transcript, label, notice, onlineCount, members }));
 });
 
 rooms.post("/rooms/:code/ask", async (c) => {
@@ -118,9 +119,16 @@ rooms.get("/rooms/:code/stream", (c) => {
   if (!room) return c.notFound();
 
   const afterId = Number(c.req.query("after") ?? "0");
+  const sessionId = getOrCreateSessionId(c);
+  const label = ensureParticipantLabel(room.id, sessionId);
 
-  const broadcastOnlineCount = () => {
-    broadcast(room.id, Date.now(), { online: connectionCount(room.id) }, "presence");
+  const broadcastPresence = () => {
+    broadcast(
+      room.id,
+      Date.now(),
+      { online: connectionCount(room.id), members: listMembers(room.id) },
+      "presence",
+    );
   };
 
   return streamSSE(c, async (stream) => {
@@ -130,6 +138,7 @@ rooms.get("/rooms/:code/stream", (c) => {
 
     let closed = false;
     const unsubscribe = subscribe(room.id, {
+      label,
       write: (chunk) => {
         if (!closed) stream.write(chunk).catch(() => {});
       },
@@ -137,8 +146,8 @@ rooms.get("/rooms/:code/stream", (c) => {
         closed = true;
       },
     });
-    // Tells every connected client (including this one) the new total.
-    broadcastOnlineCount();
+    // Tells every connected client (including this one) the new roster.
+    broadcastPresence();
 
     // Fly's proxy and other intermediaries can time out an idle connection;
     // a periodic comment keeps the stream alive without the client parsing it.
@@ -151,7 +160,7 @@ rooms.get("/rooms/:code/stream", (c) => {
         closed = true;
         clearInterval(heartbeat);
         unsubscribe();
-        broadcastOnlineCount();
+        broadcastPresence();
         resolve();
       });
     });

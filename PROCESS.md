@@ -208,6 +208,44 @@ event (fires on any kind of navigating-away, including a plain link
 click), so the server is told the moment the user leaves instead of
 whenever the browser gets around to tearing the connection down.
 
+## Crit-9: from "how many" to "who" — the week's concurrency decision
+
+Crit-9's brief asks for one documented decision about multi-user behavior,
+suggesting (among others) "whether people can see who else is here, and
+how." The room already had an online *count* (`connectionCount()`,
+[`2535743`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-yanzzzzzzzz/commit/2535743))
+but not a roster — a separate review of the live app flagged this as the
+same gap, independently.
+
+Two ways to answer "who's here": (a) a `last_seen` column on
+`room_participants`, updated on a heartbeat, so presence is a DB-backed
+fact; or (b) extend the same in-memory SSE connection tracking the online
+count already uses, so a client is "present" exactly as long as it holds an
+open connection. Picked (b), for the same reason SSE itself was picked over
+WebSockets: it reuses a mechanism already proven correct (the count's logic
+was verified against real concurrent connections, see above) instead of
+adding a second source of truth for the same fact. The cost: the member
+list is empty for everyone immediately after a redeploy, until each open
+tab reconnects and re-announces itself — acceptable, because presence is
+inherently transient (who's *currently* watching), not data that needs to
+survive a restart the way a room's transcript does. `src/sse.ts`'s
+`Client` type now carries an optional `label`; `listMembers(channel)` reads
+the same `Set` `connectionCount` already reads, just naming its members
+instead of counting them, and the existing `"presence"` SSE event's payload
+grew from `{ online }` to `{ online, members }` rather than adding a second
+event type.
+
+Tested with two real concurrent SSE connections (`spec/sse.test.ts`), since
+no existing test opened an actual stream — reading the raw SSE wire format
+off the response body directly, since Node's test runtime has no
+`EventSource`. Caught one test-authoring mistake while writing it: an
+early `return` inside a `for await...of` loop over the async generator
+silently closes that generator (calls its `.return()`), so a second call to
+read "the next event" off the same generator always reported the stream had
+ended, even though the real HTTP connection was still open. Switched to
+driving the generator's `.next()` by hand instead of `for await`, which
+doesn't trigger that implicit close.
+
 ## What's still open
 
 Deploying with a real `GROQ_API_KEY` as a Fly secret and a manual
