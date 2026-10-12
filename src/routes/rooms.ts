@@ -60,6 +60,7 @@ rooms.post("/rooms/:code/ask", async (c) => {
   const body = await c.req.parseBody();
   const question = String(body.question ?? "").trim().slice(0, 200);
   if (!question) return c.redirect(`/rooms/${room.code}`, 303);
+  const kind: "question" | "guess" = body.kind === "guess" ? "guess" : "question";
 
   const last = lastQuestionAt(room.id, sessionId);
   if (last) {
@@ -69,8 +70,13 @@ rooms.post("/rooms/:code/ask", async (c) => {
     }
   }
 
+  // Everyone in the room sees that a verdict is pending, not just the asker —
+  // the judge call can take up to TIMEOUT_MS, and a silent few seconds reads
+  // as a dead connection rather than a slow one.
+  broadcast(room.id, Date.now(), { label, kind }, "judging");
+
   const history = getTranscript(room.id);
-  const verdict = await judge(puzzle, history, question);
+  const verdict = await judge(puzzle, history, question, kind);
 
   if (!verdict) {
     const entry = insertEntry({
@@ -88,7 +94,7 @@ rooms.post("/rooms/:code/ask", async (c) => {
   const questionEntry = insertEntry({
     roomId: room.id,
     sessionId,
-    kind: "question",
+    kind,
     body: question,
     verdict: verdict.verdict,
     label,

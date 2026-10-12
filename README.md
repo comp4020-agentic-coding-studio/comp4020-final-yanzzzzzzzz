@@ -2,11 +2,13 @@
 
 A multiplayer, AI-judged lateral-thinking puzzle room (海龟汤 / "turtle soup").
 An AI judge holds the full solution to a puzzle and only ever reveals a
-cryptic premise. Anyone who opens the room's link can ask a yes/no/irrelevant
-question or submit a final guess; the judge rules on it, and the answer lands
-live in one shared transcript that everyone in the room is watching at the
-same time. There are no private per-player threads — solving the case is a
-group effort, visible to the whole room as it happens.
+cryptic premise. Anyone who opens the room's link can ask a yes/no question
+or, separately, submit a final guess — two distinct buttons on the same
+input, so the judge isn't the only thing deciding which one a player meant.
+The judge rules on it, and the answer lands live in one shared transcript
+that everyone in the room is watching at the same time. There are no private
+per-player threads — solving the case is a group effort, visible to the
+whole room as it happens.
 
 The homepage doubles as a lobby: every currently open case is listed there as
 a join link, and a new case appears on everyone else's homepage the moment
@@ -30,9 +32,11 @@ and persistent. This app isn't three checkboxes bolted onto an unrelated idea
   entries as they're broadcast. The homepage holds its own `EventSource`
   against a separate "lobby" channel on the same pub/sub, so a new case
   appears there live too, without reinventing the mechanism. The room page
-  also shows a live "N people online" count, computed from how many of those
-  connections are currently open — not from how many people have ever spoken
-  in the room, which is a different number already used for nicknames.
+  also shows who's currently there by name, not just a count — the same
+  live connection set that powers the count, named instead of counted — and
+  broadcasts a shared "judge is thinking" state the instant a question or
+  guess is submitted, so a slow verdict reads as pending to everyone in the
+  room, not as a stuck page to everyone except the person who asked.
 - **Persists.** A case that vanishes the moment the single Fly machine goes
   to sleep (which it does, by design, between visits) isn't a case anyone can
   come back to. Every room, participant, and transcript entry is written to a
