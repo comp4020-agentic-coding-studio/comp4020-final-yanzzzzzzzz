@@ -109,6 +109,23 @@ input[type="text"] {
   opacity: 0.8;
 }
 
+.members {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 1rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.members li {
+  padding: 0.2rem 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent) 8%, var(--bg));
+  font-size: 0.85rem;
+}
+
 .notice {
   padding: 0.6rem 1rem;
   border-radius: 0.4rem;

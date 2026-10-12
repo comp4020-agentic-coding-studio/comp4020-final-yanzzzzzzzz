@@ -1,4 +1,6 @@
-type Client = { write: (chunk: string) => void; close: () => void };
+// label is who's connected, for channels where that's meaningful (a room);
+// left undefined for channels where it isn't (the sitewide lobby).
+type Client = { label?: string; write: (chunk: string) => void; close: () => void };
 
 // Keyed by channel name: a room id for the room transcript, or a fixed
 // name like "lobby" for a sitewide channel. Same generic pub/sub either way.
@@ -35,4 +37,13 @@ export function broadcast(
 // right now, not who has ever spoken in the room.
 export function connectionCount(channel: string): number {
   return channels.get(channel)?.size ?? 0;
+}
+
+// Who (by label) currently holds a live connection — same connection set as
+// connectionCount, just naming the members instead of counting them. A
+// session with two tabs open shows up twice, same as it counts twice.
+export function listMembers(channel: string): string[] {
+  const set = channels.get(channel);
+  if (!set) return [];
+  return [...set].map((c) => c.label).filter((label): label is string => Boolean(label));
 }
