@@ -56,6 +56,22 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS qa_entries_room ON qa_entries(room_id, id);
 `);
 
+// sessions predates nickname/avatar/bio; ADD COLUMN only if a prior boot
+// (an older image, or /data carried over from before this feature) hasn't
+// already added them, since re-running it errors on a duplicate column.
+{
+  const existing = new Set(
+    (db.prepare("PRAGMA table_info(sessions)").all() as { name: string }[]).map((c) => c.name),
+  );
+  for (const [column, ddl] of [
+    ["nickname", "ALTER TABLE sessions ADD COLUMN nickname TEXT"],
+    ["avatar", "ALTER TABLE sessions ADD COLUMN avatar TEXT"],
+    ["bio", "ALTER TABLE sessions ADD COLUMN bio TEXT"],
+  ] as const) {
+    if (!existing.has(column)) db.exec(ddl);
+  }
+}
+
 // Reconciles the seed puzzles against src/data/puzzles.ts on every boot,
 // rather than inserting once when the table is empty. An "only if empty"
 // seed silently freezes the table at whatever content shipped first — a
@@ -183,6 +199,65 @@ export function ensureParticipantLabel(roomId: string, sessionId: string): strin
     "INSERT INTO room_participants (room_id, session_id, label) VALUES (?, ?, ?)",
   ).run(roomId, sessionId, label);
   return label;
+}
+
+export interface Profile {
+  nickname: string | null;
+  avatar: string | null;
+  bio: string | null;
+}
+
+export function getProfile(sessionId: string): Profile {
+  const row = db
+    .prepare("SELECT nickname, avatar, bio FROM sessions WHERE id = ?")
+    .get(sessionId) as Profile | undefined;
+  return row ?? { nickname: null, avatar: null, bio: null };
+}
+
+export function setProfile(
+  sessionId: string,
+  profile: { nickname: string | null; avatar: string | null; bio: string | null },
+): void {
+  db.prepare("UPDATE sessions SET nickname = ?, avatar = ?, bio = ? WHERE id = ?").run(
+    profile.nickname,
+    profile.avatar,
+    profile.bio,
+    sessionId,
+  );
+}
+
+export function profileStats(sessionId: string): { participated: number; solved: number } {
+  const participated = (
+    db
+      .prepare("SELECT COUNT(DISTINCT room_id) AS n FROM room_participants WHERE session_id = ?")
+      .get(sessionId) as { n: number }
+  ).n;
+  const solved = (
+    db
+      .prepare(
+        `SELECT COUNT(DISTINCT rp.room_id) AS n
+         FROM room_participants rp
+         JOIN rooms r ON r.id = rp.room_id
+         WHERE rp.session_id = ? AND r.status = 'solved'`,
+      )
+      .get(sessionId) as { n: number }
+  ).n;
+  return { participated, solved };
+}
+
+// What to actually show for a session in a room: a chosen nickname (with its
+// avatar baked in as a plain prefix, so every caller that already renders a
+// label string — transcript entries, the member list, "you are" — gets the
+// avatar for free, with no second field threaded through SSE/rendering).
+// Always registers the session as a participant first, even when a nickname
+// overrides the displayed text, so participation stats and the auto-label's
+// numbering stay accurate regardless of whether a nickname is set.
+export function displayLabel(roomId: string, sessionId: string): string {
+  const autoLabel = ensureParticipantLabel(roomId, sessionId);
+  const profile = getProfile(sessionId);
+  const nickname = profile.nickname?.trim();
+  if (!nickname) return autoLabel;
+  return profile.avatar ? `${profile.avatar} ${nickname}` : nickname;
 }
 
 export function getTranscript(roomId: string, afterId = 0): QaEntry[] {

@@ -24,8 +24,11 @@ and persistent. This app isn't three checkboxes bolted onto an unrelated idea
 - **Multi-user.** A puzzle room only works if the people in it are
   distinguishable — otherwise "someone already asked that" has no meaning.
   Each visitor gets an anonymous session cookie on first load and a
-  room-scoped nickname ("Anonymous Detective#3") the first time they speak in that room.
-  No account, no login — the barrier to joining a room is "open the link."
+  room-scoped nickname ("Anonymous Detective#3") the first time they speak in
+  that room. A `/profile` page lets anyone replace that with a chosen
+  nickname, one of eight preset avatars, and a one-line bio — still no
+  account, no login, just the same anonymous session remembering a name
+  instead of assigning one.
 - **Real-time.** The point of a shared transcript is that everyone sees a
   verdict land the moment it does, not on their next manual refresh. The room
   page holds an `EventSource` (Server-Sent Events) connection and appends new

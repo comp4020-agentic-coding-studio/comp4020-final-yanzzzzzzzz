@@ -1,7 +1,8 @@
+import type { Profile } from "../db.ts";
 import { layout } from "./layout.ts";
 
-export function homePage(args: { rooms: { code: string }[] }): string {
-  const { rooms } = args;
+export function homePage(args: { rooms: { code: string }[]; profile: Profile }): string {
+  const { rooms, profile } = args;
   return layout(
     "Turtle Soup Puzzle Room",
     `
@@ -27,5 +28,6 @@ export function homePage(args: { rooms: { code: string }[] }): string {
     </section>
     <script src="/lobby.js"></script>
     `,
+    profile,
   );
 }
