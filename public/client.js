@@ -53,12 +53,31 @@
 
   const onlineCountEl = document.getElementById("online-count");
   const membersEl = document.getElementById("members");
+  const hostSessionId = section.dataset.hostSessionId;
+  const viewerIsHost = section.dataset.isHost === "true";
+  const roomCodeForTransfer = roomCode;
+
+  // Mirrors src/render/room.ts's memberRowHtml() — a presence update re-
+  // renders the same host badge / transfer-host affordance the server does.
+  function renderMember(member) {
+    const isHost = member.sessionId === hostSessionId;
+    const crown = isHost ? '<span class="host-badge" title="Host">👑</span> ' : "";
+    const transfer =
+      viewerIsHost && !isHost
+        ? `<form method="post" action="/rooms/${roomCodeForTransfer}/transfer-host" class="transfer-host-form">
+            <input type="hidden" name="toSessionId" value="${escapeHtml(member.sessionId)}" />
+            <button type="submit" class="transfer-host-button">Make host</button>
+          </form>`
+        : "";
+    return `<li>${crown}${escapeHtml(member.label)}${transfer}</li>`;
+  }
+
   function renderPresence({ online, members }) {
     if (onlineCountEl) {
       onlineCountEl.textContent = `👥 ${online} ${online === 1 ? "person" : "people"} online`;
     }
     if (membersEl && Array.isArray(members)) {
-      membersEl.innerHTML = members.map((m) => `<li>${escapeHtml(m)}</li>`).join("");
+      membersEl.innerHTML = members.map(renderMember).join("");
     }
   }
 

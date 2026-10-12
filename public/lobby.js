@@ -21,12 +21,15 @@
     const li = document.createElement("li");
     li.className = "case-card";
     li.dataset.code = room.code;
-    const status = room.started ? "🔎 In progress" : "🆕 Not started yet";
+    const status = room.status === "waiting" ? "🆕 Not started yet" : "🔎 In progress";
+    const roomName = room.name ? escapeHtml(room.name) : `Case ${room.code}`;
     li.innerHTML = `
       <div class="case-card-main">
-        <h3>${escapeHtml(room.title)}</h3>
+        <h3>${roomName}</h3>
+        <p class="case-card-puzzle">playing <strong>${escapeHtml(room.title)}</strong></p>
         <p class="case-card-meta">
           <span class="case-code">Code: <code>${room.code}</code></span>
+          <span class="case-host">👑 ${escapeHtml(room.hostLabel)}</span>
           <span class="case-status">${status}</span>
           <span class="case-players">👥 ${room.players}</span>
         </p>

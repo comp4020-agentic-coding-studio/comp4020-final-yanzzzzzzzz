@@ -19,14 +19,18 @@ db.exec(`
     title TEXT NOT NULL DEFAULT '',
     premise TEXT NOT NULL,
     solution TEXT NOT NULL,
+    author_session_id TEXT REFERENCES sessions(id),
+    shared INTEGER NOT NULL DEFAULT 1,
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
   );
 
   CREATE TABLE IF NOT EXISTS rooms (
     id TEXT PRIMARY KEY,
     code TEXT NOT NULL UNIQUE,
+    name TEXT,
     puzzle_id TEXT NOT NULL REFERENCES puzzles(id),
-    status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'solved')),
+    host_session_id TEXT REFERENCES sessions(id),
+    status TEXT NOT NULL DEFAULT 'waiting' CHECK (status IN ('waiting', 'active', 'solved')),
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
   );
 
@@ -70,6 +74,61 @@ ensureColumn("sessions", "nickname", "ALTER TABLE sessions ADD COLUMN nickname T
 ensureColumn("sessions", "avatar", "ALTER TABLE sessions ADD COLUMN avatar TEXT");
 ensureColumn("sessions", "bio", "ALTER TABLE sessions ADD COLUMN bio TEXT");
 ensureColumn("puzzles", "title", "ALTER TABLE puzzles ADD COLUMN title TEXT NOT NULL DEFAULT ''");
+ensureColumn(
+  "puzzles",
+  "author_session_id",
+  "ALTER TABLE puzzles ADD COLUMN author_session_id TEXT REFERENCES sessions(id)",
+);
+ensureColumn("puzzles", "shared", "ALTER TABLE puzzles ADD COLUMN shared INTEGER NOT NULL DEFAULT 1");
+
+// ensureColumn can add new columns, but SQLite can't ALTER a CHECK
+// constraint in place — rooms.status predates the 'waiting' value a host-
+// gated lifecycle needs. Rebuilds the table in one transaction when that's
+// the case. Non-destructive to real room/transcript data (unlike the puzzle
+// reseed below, which only ever wipes reference content): every existing
+// row survives, with its status and host backfilled from data that already
+// implied them — a room with no question/guess yet becomes 'waiting', one
+// with questions becomes 'active', and its earliest joiner (if any) becomes
+// its host, since nothing recorded an explicit host before this existed.
+function ensureRoomsHaveWaitingStatus(): void {
+  const ddl =
+    (
+      db
+        .prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'rooms'")
+        .get() as { sql: string } | undefined
+    )?.sql ?? "";
+  if (ddl.includes("'waiting'")) return;
+
+  db.exec("ALTER TABLE rooms RENAME TO rooms_old");
+  db.exec(`
+    CREATE TABLE rooms (
+      id TEXT PRIMARY KEY,
+      code TEXT NOT NULL UNIQUE,
+      name TEXT,
+      puzzle_id TEXT NOT NULL REFERENCES puzzles(id),
+      host_session_id TEXT REFERENCES sessions(id),
+      status TEXT NOT NULL DEFAULT 'waiting' CHECK (status IN ('waiting', 'active', 'solved')),
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+  `);
+  db.exec(`
+    INSERT INTO rooms (id, code, name, puzzle_id, host_session_id, status, created_at)
+    SELECT
+      ro.id, ro.code, NULL, ro.puzzle_id,
+      (SELECT session_id FROM room_participants WHERE room_id = ro.id ORDER BY joined_at LIMIT 1),
+      CASE
+        WHEN ro.status = 'solved' THEN 'solved'
+        WHEN EXISTS (
+          SELECT 1 FROM qa_entries q WHERE q.room_id = ro.id AND q.kind IN ('question', 'guess')
+        ) THEN 'active'
+        ELSE 'waiting'
+      END,
+      ro.created_at
+    FROM rooms_old ro;
+  `);
+  db.exec("DROP TABLE rooms_old");
+}
+ensureRoomsHaveWaitingStatus();
 
 // Reconciles the seed puzzles against src/data/puzzles.ts on every boot,
 // rather than inserting once when the table is empty. An "only if empty"
@@ -114,20 +173,26 @@ export interface Puzzle {
   title: string;
   premise: string;
   solution: string;
+  author_session_id: string | null;
+  shared: boolean;
 }
 
 export interface LobbyRoom {
   id: string;
   code: string;
+  name: string | null;
   title: string;
-  started: boolean;
+  host_session_id: string | null;
+  status: "waiting" | "active";
 }
 
 export interface Room {
   id: string;
   code: string;
+  name: string | null;
   puzzle_id: string;
-  status: "active" | "solved";
+  host_session_id: string | null;
+  status: "waiting" | "active" | "solved";
   created_at: string;
 }
 
@@ -142,12 +207,101 @@ export interface QaEntry {
   created_at: string;
 }
 
+const PUZZLE_COLUMNS = "id, title, premise, solution, author_session_id, shared";
+
+function rowToPuzzle(row: {
+  id: string;
+  title: string;
+  premise: string;
+  solution: string;
+  author_session_id: string | null;
+  shared: number;
+}): Puzzle {
+  return { ...row, shared: Boolean(row.shared) };
+}
+
+// Only ever picks from shared/built-in puzzles — the same availability rule
+// POST /rooms enforces for a client-chosen puzzleId, so a bare "just create
+// me a room" request (no explicit puzzle picked) can't land on someone's
+// private authored puzzle either.
 export function pickRandomPuzzle(): Puzzle {
   const row = db
-    .prepare("SELECT id, title, premise, solution FROM puzzles ORDER BY RANDOM() LIMIT 1")
-    .get() as Puzzle | undefined;
+    .prepare(`SELECT ${PUZZLE_COLUMNS} FROM puzzles WHERE shared = 1 ORDER BY RANDOM() LIMIT 1`)
+    .get() as Parameters<typeof rowToPuzzle>[0] | undefined;
   if (!row) throw new Error("no puzzles seeded");
-  return row;
+  return rowToPuzzle(row);
+}
+
+export function isPuzzleAvailable(puzzleId: string): boolean {
+  const row = db.prepare("SELECT shared FROM puzzles WHERE id = ?").get(puzzleId) as
+    | { shared: number }
+    | undefined;
+  return Boolean(row?.shared);
+}
+
+export function createAuthoredPuzzle(args: {
+  title: string;
+  premise: string;
+  solution: string;
+  authorSessionId: string;
+  shared: boolean;
+}): Puzzle {
+  const id = randomUUID();
+  db.prepare(
+    `INSERT INTO puzzles (id, title, premise, solution, author_session_id, shared)
+     VALUES (?, ?, ?, ?, ?, ?)`,
+  ).run(id, args.title, args.premise, args.solution, args.authorSessionId, args.shared ? 1 : 0);
+  return rowToPuzzle(
+    db.prepare(`SELECT ${PUZZLE_COLUMNS} FROM puzzles WHERE id = ?`).get(id) as Parameters<
+      typeof rowToPuzzle
+    >[0],
+  );
+}
+
+// Never selects `solution` — the list a room-creation picker renders from
+// can't leak an answer just by existing, not merely by the UI choosing not
+// to show it.
+export function listAvailablePuzzles(): {
+  id: string;
+  title: string;
+  premise: string;
+  authorLabel: string | null;
+  usageCount: number;
+}[] {
+  const rows = db
+    .prepare(
+      `SELECT p.id, p.title, p.premise, p.author_session_id AS authorSessionId,
+              (SELECT COUNT(*) FROM rooms r WHERE r.puzzle_id = p.id) AS usageCount
+       FROM puzzles p
+       WHERE p.shared = 1
+       ORDER BY p.created_at DESC`,
+    )
+    .all() as {
+    id: string;
+    title: string;
+    premise: string;
+    authorSessionId: string | null;
+    usageCount: number;
+  }[];
+  return rows.map((r) => ({
+    id: r.id,
+    title: r.title,
+    premise: r.premise,
+    usageCount: r.usageCount,
+    authorLabel: r.authorSessionId
+      ? (getProfile(r.authorSessionId).nickname ?? "Anonymous author")
+      : null,
+  }));
+}
+
+// A plain profile lookup, not displayLabel(): resolving who hosts a room
+// (for a lobby card) shouldn't register that session as a room participant
+// the way actually joining one does.
+export function hostLabel(sessionId: string | null): string {
+  if (!sessionId) return "Unknown host";
+  const profile = getProfile(sessionId);
+  if (!profile.nickname) return "Anonymous host";
+  return profile.avatar ? `${profile.avatar} ${profile.nickname}` : profile.nickname;
 }
 
 function randomCode(): string {
@@ -159,48 +313,52 @@ function randomCode(): string {
   return code;
 }
 
-export function createRoom(puzzleId: string): Room {
+const ROOM_COLUMNS = "id, code, name, puzzle_id, host_session_id, status, created_at";
+
+// Every room starts 'waiting' (the DDL default) — someone has to be the
+// host before anyone can start it, so creation and the host assignment
+// happen together, never as a separate step.
+export function createRoom(puzzleId: string, opts: { name: string | null; hostSessionId: string }): Room {
   const id = randomUUID();
   let code = randomCode();
   // astronomically unlikely to collide, but a room code must stay unique
   while (db.prepare("SELECT 1 FROM rooms WHERE code = ?").get(code)) {
     code = randomCode();
   }
-  db.prepare("INSERT INTO rooms (id, code, puzzle_id) VALUES (?, ?, ?)").run(
+  db.prepare("INSERT INTO rooms (id, code, name, puzzle_id, host_session_id) VALUES (?, ?, ?, ?, ?)").run(
     id,
     code,
+    opts.name,
     puzzleId,
+    opts.hostSessionId,
   );
-  return db
-    .prepare("SELECT id, code, puzzle_id, status, created_at FROM rooms WHERE id = ?")
-    .get(id) as unknown as Room;
+  return db.prepare(`SELECT ${ROOM_COLUMNS} FROM rooms WHERE id = ?`).get(id) as unknown as Room;
 }
 
-// "started" is derived, not a stored state: a room with no question or guess
-// yet is distinguishable from one mid-investigation without a separate
-// ready/host flow — see PROCESS.md for why that's deliberately as far as the
-// room-state distinction goes.
+export function startRoom(roomId: string): void {
+  db.prepare("UPDATE rooms SET status = 'active' WHERE id = ? AND status = 'waiting'").run(roomId);
+}
+
+export function transferHost(roomId: string, toSessionId: string): void {
+  db.prepare("UPDATE rooms SET host_session_id = ? WHERE id = ?").run(toSessionId, roomId);
+}
+
 export function listActiveRooms(limit = 20): LobbyRoom[] {
-  const rows = db
+  return db
     .prepare(
-      `SELECT r.id, r.code, p.title,
-              EXISTS(
-                SELECT 1 FROM qa_entries q
-                WHERE q.room_id = r.id AND q.kind IN ('question', 'guess')
-              ) AS started
+      `SELECT r.id, r.code, r.name, p.title, r.host_session_id, r.status
        FROM rooms r
        JOIN puzzles p ON p.id = r.puzzle_id
-       WHERE r.status = 'active'
+       WHERE r.status IN ('waiting', 'active')
        ORDER BY r.created_at DESC
        LIMIT ?`,
     )
-    .all(limit) as (Omit<LobbyRoom, "started"> & { started: number })[];
-  return rows.map((r) => ({ ...r, started: Boolean(r.started) }));
+    .all(limit) as unknown as LobbyRoom[];
 }
 
 export function getRoomByCode(code: string): Room | undefined {
   return db
-    .prepare("SELECT id, code, puzzle_id, status, created_at FROM rooms WHERE code = ?")
+    .prepare(`SELECT ${ROOM_COLUMNS} FROM rooms WHERE code = ?`)
     .get(code.toUpperCase()) as Room | undefined;
 }
 
@@ -212,10 +370,23 @@ export function countParticipants(roomId: string): number {
   ).n;
 }
 
+// Has this session ever joined this room — the durable fact, not whether it
+// currently holds an open SSE connection (listMembers()). Transferring host
+// should work for anyone who's actually part of the room, logged in with JS
+// off or between page loads, not just whoever happens to be live right now.
+export function isParticipant(roomId: string, sessionId: string): boolean {
+  return Boolean(
+    db
+      .prepare("SELECT 1 FROM room_participants WHERE room_id = ? AND session_id = ?")
+      .get(roomId, sessionId),
+  );
+}
+
 export function getPuzzle(id: string): Puzzle | undefined {
-  return db.prepare("SELECT id, title, premise, solution FROM puzzles WHERE id = ?").get(id) as
-    | Puzzle
+  const row = db.prepare(`SELECT ${PUZZLE_COLUMNS} FROM puzzles WHERE id = ?`).get(id) as
+    | Parameters<typeof rowToPuzzle>[0]
     | undefined;
+  return row ? rowToPuzzle(row) : undefined;
 }
 
 export function ensureSession(sessionId: string): void {

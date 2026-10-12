@@ -1,4 +1,5 @@
 import type { Profile, Puzzle, QaEntry, Room } from "../db.ts";
+import type { Member } from "../sse.ts";
 import { layout } from "./layout.ts";
 import { escapeHtml } from "./html.ts";
 
@@ -13,9 +14,22 @@ function onlineLabel(online: number): string {
   return `👥 ${online} ${online === 1 ? "person" : "people"} online`;
 }
 
-function membersHtml(members: string[]): string {
+function memberRowHtml(member: Member, room: Room, viewerIsHost: boolean): string {
+  const isHost = member.sessionId === room.host_session_id;
+  const crown = isHost ? `<span class="host-badge" title="Host">👑</span> ` : "";
+  const transferButton =
+    viewerIsHost && !isHost
+      ? `<form method="post" action="/rooms/${room.code}/transfer-host" class="transfer-host-form">
+          <input type="hidden" name="toSessionId" value="${escapeHtml(member.sessionId)}" />
+          <button type="submit" class="transfer-host-button">Make host</button>
+        </form>`
+      : "";
+  return `<li>${crown}${escapeHtml(member.label)}${transferButton}</li>`;
+}
+
+function membersHtml(members: Member[], room: Room, viewerIsHost: boolean): string {
   return `<ul class="members" id="members">
-    ${members.map((m) => `<li>${escapeHtml(m)}</li>`).join("\n")}
+    ${members.map((m) => memberRowHtml(m, room, viewerIsHost)).join("\n")}
   </ul>`;
 }
 
@@ -53,6 +67,18 @@ function recapHtml(room: Room, puzzle: Puzzle, transcript: QaEntry[], participan
   </section>`;
 }
 
+function waitingHtml(room: Room, isHost: boolean): string {
+  return `<section class="waiting-room">
+    ${
+      isHost
+        ? `<form method="post" action="/rooms/${room.code}/start">
+          <button type="submit">🚦 Start the investigation</button>
+        </form>`
+        : `<p class="notice" role="status">Waiting for the host to start this case…</p>`
+    }
+  </section>`;
+}
+
 function entryHtml(entry: QaEntry): string {
   if (entry.kind === "system") {
     return `<li class="entry entry-system">${escapeHtml(entry.body)}</li>`;
@@ -65,6 +91,22 @@ function entryHtml(entry: QaEntry): string {
   </li>`;
 }
 
+function askFormHtml(room: Room, isAuthor: boolean): string {
+  return `<form method="post" action="/rooms/${room.code}/ask" id="ask-form">
+    <label for="question">Ask a yes/no question${isAuthor ? "" : ", or submit your final guess"}:</label>
+    <input type="text" id="question" name="question" maxlength="200" required autocomplete="off" />
+    <div class="ask-buttons">
+      <button type="submit" name="kind" value="question">Ask</button>
+      ${
+        isAuthor
+          ? ""
+          : `<button type="submit" name="kind" value="guess" class="guess-button">Submit final guess</button>`
+      }
+    </div>
+    ${isAuthor ? `<p class="author-note">You wrote this case, so your own guesses don't count.</p>` : ""}
+  </form>`;
+}
+
 export function roomPage(args: {
   room: Room;
   puzzle: Puzzle;
@@ -72,24 +114,46 @@ export function roomPage(args: {
   label: string;
   notice?: string;
   onlineCount: number;
-  members: string[];
+  members: Member[];
   profile: Profile;
   participants: number;
+  viewerSessionId: string;
+  isHost: boolean;
+  isAuthor: boolean;
 }): string {
-  const { room, puzzle, transcript, label, notice, onlineCount, members, profile, participants } =
-    args;
+  const {
+    room,
+    puzzle,
+    transcript,
+    label,
+    notice,
+    onlineCount,
+    members,
+    profile,
+    participants,
+    viewerSessionId,
+    isHost,
+    isAuthor,
+  } = args;
   const solved = room.status === "solved";
+  const waiting = room.status === "waiting";
+  const heading = room.name ? escapeHtml(room.name) : `Case #${room.code}`;
 
   return layout(
-    `Case ${room.code} · Turtle Soup Puzzle Room`,
+    `${room.name ?? `Case ${room.code}`} · Turtle Soup Puzzle Room`,
     `
-    <section class="room" data-room-code="${room.code}" data-last-id="${transcript.at(-1)?.id ?? 0}" data-solved="${solved}">
-      <h1>Case #${room.code}</h1>
+    <section class="room" data-room-code="${room.code}" data-last-id="${transcript.at(-1)?.id ?? 0}" data-solved="${solved}" data-host-session-id="${escapeHtml(room.host_session_id ?? "")}" data-viewer-session-id="${escapeHtml(viewerSessionId)}" data-is-host="${isHost}">
+      <h1>${heading}</h1>
+      <p class="room-subtitle">
+        playing <strong>${escapeHtml(puzzle.title)}</strong>
+        · <span class="room-code">Code: <code>${room.code}</code></span>
+      </p>
       <p class="premise">${escapeHtml(puzzle.premise)}</p>
       ${solved ? recapHtml(room, puzzle, transcript, participants) : ""}
+      ${waiting ? waitingHtml(room, isHost) : ""}
       <p class="whoami">You are <strong>${escapeHtml(label)}</strong></p>
       <p class="online-count" id="online-count">${onlineLabel(onlineCount)}</p>
-      ${membersHtml(members)}
+      ${membersHtml(members, room, isHost)}
       ${notice ? `<p class="notice" role="status">${escapeHtml(notice)}</p>` : ""}
       <p class="judging" id="judging-status" role="status" hidden></p>
 
@@ -97,18 +161,7 @@ export function roomPage(args: {
         ${transcript.map(entryHtml).join("\n")}
       </ul>
 
-      ${
-        solved
-          ? ""
-          : `<form method="post" action="/rooms/${room.code}/ask" id="ask-form">
-        <label for="question">Ask a yes/no question, or submit your final guess:</label>
-        <input type="text" id="question" name="question" maxlength="200" required autocomplete="off" />
-        <div class="ask-buttons">
-          <button type="submit" name="kind" value="question">Ask</button>
-          <button type="submit" name="kind" value="guess" class="guess-button">Submit final guess</button>
-        </div>
-      </form>`
-      }
+      ${solved || waiting ? "" : askFormHtml(room, isAuthor)}
     </section>
     <script id="initial-transcript" type="application/json">${JSON.stringify(transcript)}</script>
     <script src="/client.js"></script>

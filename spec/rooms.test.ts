@@ -16,9 +16,11 @@ function parseCookie(setCookieHeaders: string[]): string {
   return sessionCookie.split(";")[0];
 }
 
-// Only creates the room — does NOT visit the room page, since that itself
-// would register an anonymous participant and shift every caller's
-// first-visitor numbering by one.
+// Creates a room and immediately starts it as the host, so every existing
+// caller's "the room is ready to ask into" assumption still holds under the
+// waiting→active lifecycle. Doesn't visit the room page as that session —
+// /start only compares session ids, it doesn't register a participant — so
+// this still doesn't shift any later visitor's first-visitor numbering.
 async function createRoom(): Promise<{ code: string }> {
   const res = await fetch(new URL("/rooms", baseUrl), {
     method: "POST",
@@ -28,6 +30,15 @@ async function createRoom(): Promise<{ code: string }> {
   const location = res.headers.get("location") ?? "";
   const code = location.split("/").pop() ?? "";
   expect(code).toMatch(/^[A-Z0-9]{5}$/);
+
+  const hostCookie = parseCookie(res.headers.getSetCookie());
+  const start = await fetch(new URL(`/rooms/${code}/start`, baseUrl), {
+    method: "POST",
+    headers: { cookie: hostCookie },
+    redirect: "manual",
+  });
+  expect(start.status).toBe(303);
+
   return { code };
 }
 
@@ -90,23 +101,44 @@ it("lists a newly created room on the homepage so others can join it", async () 
   expect(html).toContain(`/rooms/${code}`);
 });
 
-it("shows a not-started case card that flips to in-progress once a question is asked", async () => {
-  const { code } = await createRoom();
-  const { cookie } = await visitRoom(code);
+it("shows a not-started case card that flips to in-progress once the host starts it", async () => {
+  // Bypasses the createRoom() helper deliberately — that helper auto-starts
+  // the room, and this test exists specifically to observe the state before
+  // that happens.
+  const create = await fetch(new URL("/rooms", baseUrl), { method: "POST", redirect: "manual" });
+  const code = (create.headers.get("location") ?? "").split("/").pop() ?? "";
+  const hostCookie = parseCookie(create.headers.getSetCookie());
 
   const before = await (await fetch(new URL("/", baseUrl))).text();
   const cardStart = before.indexOf(`data-code="${code}"`);
   expect(before.slice(cardStart, cardStart + 400)).toContain("Not started yet");
 
-  await fetch(new URL(`/rooms/${code}/ask`, baseUrl), {
+  await fetch(new URL(`/rooms/${code}/start`, baseUrl), {
     method: "POST",
-    headers: { cookie, "content-type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({ question: "is this a test" }),
+    headers: { cookie: hostCookie },
+    redirect: "manual",
   });
 
   const after = await (await fetch(new URL("/", baseUrl))).text();
   const cardAfter = after.indexOf(`data-code="${code}"`);
   expect(after.slice(cardAfter, cardAfter + 400)).toContain("In progress");
+});
+
+it("only the host can start a case", async () => {
+  const create = await fetch(new URL("/rooms", baseUrl), { method: "POST", redirect: "manual" });
+  const code = (create.headers.get("location") ?? "").split("/").pop() ?? "";
+
+  const { cookie: notHost } = await visitRoom(code);
+  const attempt = await fetch(new URL(`/rooms/${code}/start`, baseUrl), {
+    method: "POST",
+    headers: { cookie: notHost },
+    redirect: "manual",
+  });
+  expect(attempt.status).toBe(303);
+  expect(attempt.headers.get("location")).toContain("notice=host-only");
+
+  const stillWaiting = await (await fetch(new URL(`/rooms/${code}`, baseUrl))).text();
+  expect(stillWaiting).toContain("Waiting for the host");
 });
 
 it("redirects /join?code= to the room, case-insensitively", async () => {
