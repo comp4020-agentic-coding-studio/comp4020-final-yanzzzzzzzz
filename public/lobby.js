@@ -8,20 +8,38 @@
   const emptyNotice = document.querySelector(".lobby-empty");
   const seen = new Set([...list.querySelectorAll("li[data-code]")].map((li) => li.dataset.code));
 
-  function addRoom(code) {
-    if (seen.has(code)) return;
-    seen.add(code);
+  function escapeHtml(s) {
+    return s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+  }
+
+  // Mirrors src/render/home.ts's caseCardHtml() — a newly created room
+  // arrives this way instead of a full page reload.
+  function addRoom(room) {
+    if (seen.has(room.code)) return;
+    seen.add(room.code);
     if (emptyNotice) emptyNotice.hidden = true;
     const li = document.createElement("li");
-    li.dataset.code = code;
-    li.innerHTML = `<a href="/rooms/${code}">Join case ${code}</a>`;
+    li.className = "case-card";
+    li.dataset.code = room.code;
+    const status = room.started ? "🔎 In progress" : "🆕 Not started yet";
+    li.innerHTML = `
+      <div class="case-card-main">
+        <h3>${escapeHtml(room.title)}</h3>
+        <p class="case-card-meta">
+          <span class="case-code">Code: <code>${room.code}</code></span>
+          <span class="case-status">${status}</span>
+          <span class="case-players">👥 ${room.players}</span>
+        </p>
+      </div>
+      <a href="/rooms/${room.code}" class="case-join">Join</a>
+    `;
     list.prepend(li);
   }
 
   const source = new EventSource("/lobby/stream");
   source.onmessage = (event) => {
     if (!event.data) return; // heartbeat
-    addRoom(JSON.parse(event.data).code);
+    addRoom(JSON.parse(event.data));
   };
 
   // See client.js's pagehide listener — same reasoning, so a room's lobby

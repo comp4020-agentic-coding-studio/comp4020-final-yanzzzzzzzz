@@ -8,12 +8,16 @@ import { lobby } from "./routes/lobby.ts";
 import { profileRoute } from "./routes/profile.ts";
 import { getProfile, listActiveRooms } from "./db.ts"; // also runs migrations + seeds the puzzle bank on boot
 import { getOrCreateSessionId } from "./session.ts";
+import { connectionCount } from "./sse.ts";
 
 const app = new Hono();
 
 app.get("/", (c) => {
   const profile = getProfile(getOrCreateSessionId(c));
-  return c.html(homePage({ rooms: listActiveRooms(), profile }));
+  // Player counts are as of this page load, not kept live while sitting on
+  // the lobby — see PROCESS.md for why that's a deliberate scope cut.
+  const rooms = listActiveRooms().map((r) => ({ ...r, players: connectionCount(r.id) }));
+  return c.html(homePage({ rooms, profile }));
 });
 app.use("/*", serveStatic({ root: "./public" }));
 app.route("/", readmeRoute);

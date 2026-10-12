@@ -25,8 +25,21 @@ export const rooms = new Hono();
 rooms.post("/rooms", (c) => {
   const puzzle = pickRandomPuzzle();
   const room = createRoom(puzzle.id);
-  broadcast(LOBBY_CHANNEL, room.id, { code: room.code });
+  // Nobody's connected to this room yet, so it starts at 0 players and
+  // "not started" — both true at the instant of creation, not placeholders.
+  broadcast(LOBBY_CHANNEL, room.id, {
+    code: room.code,
+    title: puzzle.title,
+    started: false,
+    players: 0,
+  });
   return c.redirect(`/rooms/${room.code}`, 303);
+});
+
+rooms.get("/join", (c) => {
+  const code = c.req.query("code")?.trim().toUpperCase();
+  if (!code) return c.redirect("/");
+  return c.redirect(`/rooms/${code}`, 303);
 });
 
 rooms.get("/rooms/:code", (c) => {

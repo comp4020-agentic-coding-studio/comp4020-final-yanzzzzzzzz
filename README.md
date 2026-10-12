@@ -10,10 +10,12 @@ that everyone in the room is watching at the same time. There are no private
 per-player threads — solving the case is a group effort, visible to the
 whole room as it happens.
 
-The homepage doubles as a lobby: every currently open case is listed there as
-a join link, and a new case appears on everyone else's homepage the moment
-someone starts one, live — nobody has to already have the room's link to end
-up playing together.
+The homepage doubles as a lobby: every currently open case is shown as a
+card (a spoiler-free title, its code, whether anyone's asked anything yet,
+and how many people are in it), and a new case appears live on everyone
+else's homepage the moment someone starts one — nobody has to already have
+the room's link to end up playing together, and anyone with just the code
+can type it into the lobby's "Have a code?" box instead.
 
 ## Why this shape
 
@@ -102,9 +104,10 @@ local runs.
 ## What's deliberately out of scope
 
 A historical case archive, multiple difficulty levels or user-submitted
-puzzles, room moderation or a spectator-only mode, and an explicit "give me a
-hint" command beyond yes/no/irrelevant. A room also doesn't disappear from
-the lobby live the instant it's solved — only on the next homepage load.
-Noting what was cut, and why, is part of the process record in
-`PROCESS.md` — the brief rewards one idea taken all the way over several
-built halfway.
+puzzles, room moderation or a spectator-only mode, a host/ready-up flow
+before a room "starts", and an explicit "give me a hint" command beyond
+yes/no/irrelevant. A room also doesn't disappear from the lobby live the
+instant it's solved, and a lobby card's player count isn't kept live either
+— both only refresh on the next homepage load. Noting what was cut, and why,
+is part of the process record in `PROCESS.md` — the brief rewards one idea
+taken all the way over several built halfway.
