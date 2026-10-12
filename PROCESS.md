@@ -411,6 +411,82 @@ string appeared in the page, which only a quote-free puzzle would satisfy.
 Not an app bug; fixed the assertion to compare against the same escaped form
 instead of retrying until a different puzzle got picked.
 
+## Reopening the host/ready decision, and player-authored puzzles
+
+A second round of review, after crit-9, pushed for a host role with a real
+not-started→host-starts→in-progress lifecycle, player-authored puzzles with
+an optional public library, and a room name distinct from the puzzle title —
+explicitly scoped by the user as crit-10 (2026-10-21) prep, done now rather
+than waiting.
+
+This directly reopens a decision from earlier the same day: I'd declined a
+host/ready-up lifecycle as conflicting with the app's "no gatekeeping"
+design (anyone with a room's code can walk in and read the transcript
+immediately). The reviewer's counter is correct and narrower than what I'd
+rejected: a host role doesn't have to gate who can *join* — only who can
+*start* a room that hasn't started. Joining, reading, and waiting are still
+open to anyone; only asking a question is gated behind the host clicking
+"start." Built it, with this reversal recorded here rather than silently
+overwriting the earlier reasoning.
+
+**Schema**: `rooms.status`'s CHECK constraint only allowed `('active',
+'solved')`, and SQLite can't ALTER a CHECK constraint in place. Rebuilding
+the table (rename, recreate with `'waiting'` added, copy, drop) is a real,
+one-time migration — guarded by checking `sqlite_master.sql` for `'waiting'`
+first — rather than a new column, and it's **non-destructive to real room
+data**, unlike the puzzle-reseed wipe above (which only ever touches
+reference content): every existing room survives, backfilled with the
+status its own data already implied (a question/guess present → `active`,
+none → `waiting`) and a best-effort host (its earliest joiner, since nothing
+recorded an explicit host before this existed). Verified against a seeded
+pre-migration database shaped like today's live one before trusting it.
+
+**Two adaptations from the literal request**, not built as asked:
+- "A popup to create a room" → a real page at `GET /rooms/new`
+  (`?mode=existing` / `?mode=author`, plain links and forms). A JS modal with
+  internal tab state can't work with JavaScript off, which breaks this app's
+  stated "works end to end with JS disabled" design; a page with two
+  query-selected modes does, for free, and still gets a JS-only live puzzle
+  preview layered on top as a non-load-bearing extra.
+- "Puzzle versioning, so an author's later edit doesn't change an
+  in-progress room's answer" → solved by *never implementing puzzle editing
+  as an UPDATE*, not by snapshotting puzzle content onto each room.
+  `rooms.puzzle_id` already points at one immutable row forever; as long as
+  a future edit feature inserts a new row instead of mutating the old one,
+  every room's answer is already permanently pinned. No snapshot column
+  needed — the existing data model already has this property, it just
+  wasn't being relied on yet.
+
+**Puzzle authoring never exposes a solution it doesn't have to**:
+`listAvailablePuzzles()` (the picker on `GET /rooms/new`) selects only
+`id, title, premise` — the SQL itself can't leak a solution, not merely a
+template choosing not to render one. A puzzle's own author can still ask
+questions in their own room (there's a legitimate reason to playtest
+phrasing) but a `kind: 'guess'` from `author_session_id` is rejected
+server-side with a notice rather than silently auto-solving the room they
+already know the answer to.
+
+**Scope cuts, recorded rather than silently decided**: lobby cards show the
+*host's* identity plus a live player count, not every member's avatar (an
+N-avatar live-sync cost per card for little value); "transfer host" is a
+manual button, no automatic failover if a host goes offline (a `waiting`
+room with an absent host is a known limitation); a room's name is set once
+at creation, no rename page; "play again" after solving stays open to
+anyone rather than host-gated, since it creates a brand new room and never
+touches the solved one — gating it would add friction with no safety
+benefit.
+
+**A real test bug, not just new coverage**: `transferHost`'s route validated
+the target was "a current member" against `listMembers()` — the *live SSE
+connection* set, not the durable `room_participants` table. In a black-box
+HTTP test that never opens an `EventSource`, that set is always empty, so
+the transfer silently no-opped and a host-only-gated follow-up request
+succeeded when it should have failed. Root cause was conflating "currently
+has an open connection" (what the online count and presence roster mean)
+with "has ever joined this room" (what membership for a permissions check
+should mean) — fixed by checking `room_participants` directly
+(`isParticipant()`), not by loosening the test.
+
 ## What's still open
 
 **`GROQ_API_KEY` is not set on the live Fly app.** Posting a question to the

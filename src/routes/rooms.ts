@@ -2,37 +2,94 @@ import { Hono } from "hono";
 import { streamSSE } from "hono/streaming";
 import {
   countParticipants,
+  createAuthoredPuzzle,
   createRoom,
   displayLabel,
   getProfile,
   getPuzzle,
   getRoomByCode,
   getTranscript,
+  hostLabel,
   insertEntry,
+  isParticipant,
+  isPuzzleAvailable,
   lastQuestionAt,
+  listAvailablePuzzles,
   markSolved,
   pickRandomPuzzle,
+  startRoom,
+  transferHost,
 } from "../db.ts";
 import { judge } from "../llm.ts";
 import { broadcast, connectionCount, listMembers, subscribe } from "../sse.ts";
 import { getOrCreateSessionId } from "../session.ts";
 import { roomPage } from "../render/room.ts";
+import { newRoomPage } from "../render/room-new.ts";
 import { LOBBY_CHANNEL } from "./lobby.ts";
 
 const COOLDOWN_MS = 5_000;
 
+const NOTICES: Record<string, string> = {
+  cooldown: "Slow down — the same person has to wait a few seconds between questions.",
+  "host-only": "Only the host can do that.",
+  "not-started": "This case hasn't started yet — wait for the host.",
+  "author-guess": "You wrote this case — let someone else crack it.",
+  "unavailable-puzzle": "That puzzle isn't available to pick anymore.",
+  "incomplete-puzzle": "Fill in a title, premise, and solution to create your case.",
+};
+
 export const rooms = new Hono();
 
-rooms.post("/rooms", (c) => {
-  const puzzle = pickRandomPuzzle();
-  const room = createRoom(puzzle.id);
-  // Nobody's connected to this room yet, so it starts at 0 players and
-  // "not started" — both true at the instant of creation, not placeholders.
+rooms.get("/rooms/new", (c) => {
+  const profile = getProfile(getOrCreateSessionId(c));
+  const mode = c.req.query("mode") === "author" ? "author" : "existing";
+  const notice = NOTICES[c.req.query("notice") ?? ""];
+  return c.html(newRoomPage({ mode, puzzles: listAvailablePuzzles(), profile, notice }));
+});
+
+rooms.post("/rooms", async (c) => {
+  const sessionId = getOrCreateSessionId(c);
+  const body = await c.req.parseBody();
+  const mode = body.mode === "author" ? "author" : "existing";
+  const name = String(body.name ?? "").trim().slice(0, 60) || null;
+
+  let puzzle;
+  if (mode === "author") {
+    const title = String(body.title ?? "").trim().slice(0, 80);
+    const premise = String(body.premise ?? "").trim().slice(0, 1000);
+    const solution = String(body.solution ?? "").trim().slice(0, 2000);
+    if (!title || !premise || !solution) {
+      return c.redirect("/rooms/new?mode=author&notice=incomplete-puzzle", 303);
+    }
+    const shared = body.shared === "on";
+    puzzle = createAuthoredPuzzle({ title, premise, solution, authorSessionId: sessionId, shared });
+  } else {
+    const puzzleId = typeof body.puzzleId === "string" ? body.puzzleId : "";
+    if (puzzleId) {
+      if (!isPuzzleAvailable(puzzleId)) {
+        return c.redirect("/rooms/new?notice=unavailable-puzzle", 303);
+      }
+      const found = getPuzzle(puzzleId);
+      if (!found) return c.redirect("/rooms/new?notice=unavailable-puzzle", 303);
+      puzzle = found;
+    } else {
+      // No explicit pick (a bare "start a case" with nothing chosen yet) —
+      // still only ever lands on a shared/built-in puzzle, same rule as a
+      // client-supplied id, never a private authored one.
+      puzzle = pickRandomPuzzle();
+    }
+  }
+
+  const room = createRoom(puzzle.id, { name, hostSessionId: sessionId });
+  // Nobody's connected yet, so 0 players is the true count, not a
+  // placeholder — and every room starts 'waiting' until its host starts it.
   broadcast(LOBBY_CHANNEL, room.id, {
     code: room.code,
+    name: room.name,
     title: puzzle.title,
-    started: false,
+    status: room.status,
     players: 0,
+    hostLabel: hostLabel(sessionId),
   });
   return c.redirect(`/rooms/${room.code}`, 303);
 });
@@ -53,22 +110,78 @@ rooms.get("/rooms/:code", (c) => {
   const label = displayLabel(room.id, sessionId);
   const profile = getProfile(sessionId);
   const transcript = getTranscript(room.id);
-  const notice = c.req.query("cooldown")
-    ? "Slow down — the same person has to wait a few seconds between questions."
-    : undefined;
+  const notice = NOTICES[c.req.query("notice") ?? ""];
 
   const onlineCount = connectionCount(room.id);
   const members = listMembers(room.id);
   const participants = countParticipants(room.id);
+  const isHost = sessionId === room.host_session_id;
+  const isAuthor = puzzle.author_session_id === sessionId;
+
   return c.html(
-    roomPage({ room, puzzle, transcript, label, notice, onlineCount, members, profile, participants }),
+    roomPage({
+      room,
+      puzzle,
+      transcript,
+      label,
+      notice,
+      onlineCount,
+      members,
+      profile,
+      participants,
+      viewerSessionId: sessionId,
+      isHost,
+      isAuthor,
+    }),
   );
+});
+
+rooms.post("/rooms/:code/start", (c) => {
+  const room = getRoomByCode(c.req.param("code"));
+  if (!room) return c.notFound();
+  const sessionId = getOrCreateSessionId(c);
+  if (sessionId !== room.host_session_id) {
+    return c.redirect(`/rooms/${room.code}?notice=host-only`, 303);
+  }
+  if (room.status === "waiting") {
+    startRoom(room.id);
+    // Not displayLabel(): starting the room shouldn't itself register the
+    // host as a numbered participant if they haven't actually joined yet.
+    const entry = insertEntry({
+      roomId: room.id,
+      sessionId: null,
+      kind: "system",
+      body: "🚦 The host started the investigation.",
+      verdict: null,
+      label: null,
+    });
+    broadcast(room.id, entry.id, entry);
+  }
+  return c.redirect(`/rooms/${room.code}`, 303);
+});
+
+rooms.post("/rooms/:code/transfer-host", async (c) => {
+  const room = getRoomByCode(c.req.param("code"));
+  if (!room) return c.notFound();
+  const sessionId = getOrCreateSessionId(c);
+  if (sessionId !== room.host_session_id) {
+    return c.redirect(`/rooms/${room.code}?notice=host-only`, 303);
+  }
+  const body = await c.req.parseBody();
+  const toSessionId = String(body.toSessionId ?? "");
+  if (toSessionId && toSessionId !== sessionId && isParticipant(room.id, toSessionId)) {
+    transferHost(room.id, toSessionId);
+  }
+  return c.redirect(`/rooms/${room.code}`, 303);
 });
 
 rooms.post("/rooms/:code/ask", async (c) => {
   const room = getRoomByCode(c.req.param("code"));
   if (!room) return c.notFound();
   if (room.status === "solved") return c.redirect(`/rooms/${room.code}`, 303);
+  if (room.status === "waiting") {
+    return c.redirect(`/rooms/${room.code}?notice=not-started`, 303);
+  }
 
   const puzzle = getPuzzle(room.puzzle_id);
   if (!puzzle) return c.notFound();
@@ -81,11 +194,15 @@ rooms.post("/rooms/:code/ask", async (c) => {
   if (!question) return c.redirect(`/rooms/${room.code}`, 303);
   const kind: "question" | "guess" = body.kind === "guess" ? "guess" : "question";
 
+  if (kind === "guess" && puzzle.author_session_id === sessionId) {
+    return c.redirect(`/rooms/${room.code}?notice=author-guess`, 303);
+  }
+
   const last = lastQuestionAt(room.id, sessionId);
   if (last) {
     const lastMs = Date.parse(`${last.replace(" ", "T")}Z`);
     if (Date.now() - lastMs < COOLDOWN_MS) {
-      return c.redirect(`/rooms/${room.code}?cooldown=1`, 303);
+      return c.redirect(`/rooms/${room.code}?notice=cooldown`, 303);
     }
   }
 
@@ -164,6 +281,7 @@ rooms.get("/rooms/:code/stream", (c) => {
     let closed = false;
     const unsubscribe = subscribe(room.id, {
       label,
+      sessionId,
       write: (chunk) => {
         if (!closed) stream.write(chunk).catch(() => {});
       },

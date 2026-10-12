@@ -54,12 +54,16 @@ async function* sseEvents(res: Response): AsyncGenerator<{ event: string; data: 
 // SSE connection) alive across repeated calls.
 async function nextPresence(
   gen: AsyncGenerator<{ event: string; data: string }>,
-): Promise<{ online: number; members: string[] }> {
+): Promise<{ online: number; members: { sessionId: string; label: string }[] }> {
   while (true) {
     const { value, done } = await gen.next();
     if (done) throw new Error("stream ended without a presence event");
     if (value.event === "presence") return JSON.parse(value.data);
   }
+}
+
+function labelsOf(members: { sessionId: string; label: string }[]): string[] {
+  return members.map((m) => m.label);
 }
 
 it(
@@ -77,7 +81,7 @@ it(
     const genA = sseEvents(resA);
 
     const onA = await nextPresence(genA);
-    expect(onA.members).toEqual(["Anonymous Detective#1"]);
+    expect(labelsOf(onA.members)).toEqual(["Anonymous Detective#1"]);
 
     const controllerB = new AbortController();
     const resB = await fetch(new URL(`/rooms/${code}/stream`, baseUrl), {
@@ -88,7 +92,7 @@ it(
 
     // B joining broadcasts a fresh roster to every open connection, A included.
     const afterBJoins = await nextPresence(genA);
-    expect([...afterBJoins.members].sort()).toEqual([
+    expect(labelsOf(afterBJoins.members).sort()).toEqual([
       "Anonymous Detective#1",
       "Anonymous Detective#2",
     ]);
@@ -96,7 +100,7 @@ it(
 
     controllerB.abort();
     const afterBLeaves = await nextPresence(genA);
-    expect(afterBLeaves.members).toEqual(["Anonymous Detective#1"]);
+    expect(labelsOf(afterBLeaves.members)).toEqual(["Anonymous Detective#1"]);
 
     controllerA.abort();
   },

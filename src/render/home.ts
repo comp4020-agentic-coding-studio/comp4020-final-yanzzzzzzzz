@@ -4,19 +4,23 @@ import { escapeHtml } from "./html.ts";
 
 export interface LobbyCardRoom extends LobbyRoom {
   players: number;
+  hostLabel: string;
 }
 
-function statusLabel(started: boolean): string {
-  return started ? "🔎 In progress" : "🆕 Not started yet";
+function statusLabel(status: LobbyRoom["status"]): string {
+  return status === "waiting" ? "🆕 Not started yet" : "🔎 In progress";
 }
 
 function caseCardHtml(room: LobbyCardRoom): string {
+  const roomName = room.name ? escapeHtml(room.name) : `Case ${room.code}`;
   return `<li class="case-card" data-code="${room.code}">
     <div class="case-card-main">
-      <h3>${escapeHtml(room.title)}</h3>
+      <h3>${roomName}</h3>
+      <p class="case-card-puzzle">playing <strong>${escapeHtml(room.title)}</strong></p>
       <p class="case-card-meta">
         <span class="case-code">Code: <code>${room.code}</code></span>
-        <span class="case-status">${statusLabel(room.started)}</span>
+        <span class="case-host">👑 ${escapeHtml(room.hostLabel)}</span>
+        <span class="case-status">${statusLabel(room.status)}</span>
         <span class="case-players">👥 ${room.players}</span>
       </p>
     </div>
@@ -30,17 +34,12 @@ export function homePage(args: { rooms: LobbyCardRoom[]; profile: Profile }): st
     "Turtle Soup Puzzle Room",
     `
     <section class="hero">
-      <h1>Turtle Soup Puzzle Room</h1>
-      <p>
-        The AI knows the whole truth, and only ever gives you one cryptic premise.
-        Everyone in the room shares the same transcript — ask yes/no questions,
-        the AI rules on them in real time, and the answer broadcasts live to
-        everyone in the room. Reason together, solve the case together.
-      </p>
+      <div class="hero-intro">
+        <h1>Turtle Soup Puzzle Room</h1>
+        <p>Multiplayer, AI-judged lateral-thinking cases, solved live together.</p>
+      </div>
       <div class="hero-actions">
-        <form method="post" action="/rooms">
-          <button type="submit">Start a new case</button>
-        </form>
+        <a href="/rooms/new" class="button-link">Start a new case</a>
         <form method="get" action="/join" class="join-form">
           <label for="join-code">Have a code?</label>
           <input type="text" id="join-code" name="code" maxlength="5" autocomplete="off" placeholder="ABCDE" />
