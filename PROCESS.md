@@ -340,6 +340,45 @@ Stats (`profileStats()`) are computed from existing tables — `COUNT(DISTINCT
 room_id)` in `room_participants` for "joined", joined against `rooms.status
 = 'solved'` for "solved" — no new counters to keep in sync.
 
+## Lobby cards, and a deliberately thin "state" distinction
+
+The same review's biggest complaint: the lobby was a bare list of "Join case
+XXXXX" links — no sense of what a case was before joining it, or whether it
+had even started. Gave `puzzles` a spoiler-free `title` (e.g. "The Elevator
+Routine", not "The Dwarf's Elevator"), and `listActiveRooms()` now joins
+against it and derives a `started` flag — `EXISTS(... WHERE kind IN
+('question', 'guess'))` — rather than storing a new status.
+
+The review's fuller proposal included a three-state room lifecycle with a
+host, a "ready" step, and an explicit invite-before-start flow. That's in
+real tension with this app's own stated design in `README.md`: no accounts,
+no gatekeeping, anyone with the link (or now, anyone who types the code into
+the lobby's "Have a code?" box — new `GET /join`) can walk straight into a
+case already in progress and start reading the transcript. A host/ready
+system would be a different game's shape, not a refinement of this one.
+Resolved it by taking only the *visible* half of the ask: "not started yet"
+vs. "in progress" is now a real, derived distinction a lobby card shows —
+but it's a read of existing data (has anyone asked anything yet?), not a new
+gate anyone has to clear to play. Noting the tension and the narrower choice
+here rather than quietly building past it, or quietly ignoring the fuller
+ask.
+
+Player counts on lobby cards are computed at page-load time
+(`connectionCount(room.id)`, the same mechanism the room page's own count
+uses) — deliberately **not** kept live while someone sits on the homepage,
+since that would mean re-broadcasting every room's presence changes onto the
+lobby channel too. The lobby already has one documented live-vs-not-live
+line (a solved room doesn't disappear from the list until the next load);
+this is the same kind of cut, for the same reason: the brief's real-time
+grading is about what happens inside a shared session, not lobby metadata
+freshness.
+
+Also added a plain `title` to `src/data/puzzles.ts`'s 8 seed puzzles. Since
+`seedPuzzlesIfEmpty()`'s up-to-date check now includes title in what it
+diffs, this triggered the same full reseed-and-clear-rooms path a content
+edit already does (documented earlier in this file) — expected, not a
+surprise.
+
 ## What's still open
 
 **`GROQ_API_KEY` is not set on the live Fly app.** Posting a question to the

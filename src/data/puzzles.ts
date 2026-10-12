@@ -2,54 +2,65 @@
 // Authored directly rather than generated at build time — see PROCESS.md for
 // why.
 export interface SeedPuzzle {
+  title: string;
   premise: string;
   solution: string;
 }
 
+// Titles name the setup, not the twist — a lobby card should tempt someone
+// into a case, not spoil it.
 export const SEED_PUZZLES: SeedPuzzle[] = [
   {
+    title: "A Bowl of Turtle Soup",
     premise:
       "A man walks into a restaurant and orders a bowl of turtle soup. After one spoonful, he goes back to his seat, pulls out a gun, and shoots himself. Why?",
     solution:
       "Years earlier, the man was shipwrecked and separated from his companions, surviving by eating what he was told was turtle meat from a castaway who died — it was actually a companion's flesh, but he was never told. Tasting real turtle soup for the first time, he realized it tasted nothing like what he'd eaten back then, understood what he'd really survived on, and couldn't live with the truth.",
   },
   {
+    title: "The Silent Phone Call",
     premise:
       "A woman hears the phone ring in the middle of the night. She answers, says nothing, hangs up, and immediately calls the police. Why?",
     solution:
       "She and her husband had agreed that a silent late-night call meant he was in trouble somewhere, unable to speak, but had managed to dial the prearranged number for help. She called the police the moment she heard the silence.",
   },
   {
+    title: "The Elevator Routine",
     premise:
       "A man lives on the 10th floor. Every morning he takes the elevator down to the ground floor for work, but every evening he only rides the elevator up to the 7th floor and walks the rest of the way — except on rainy days, when he rides it straight to the 10th. Why?",
     solution:
       "He is a dwarf who can only reach the button for the 7th floor. On rainy days he carries an umbrella, and uses its tip to press the button for the 10th floor.",
   },
   {
+    title: "The Desert Parachute",
     premise:
       "A body is found in the desert next to an unopened parachute and a single match. How did he die?",
     solution:
       "He was one of several passengers who had to jump from a failing plane with too few parachutes to go around. They drew lots to decide who got a parachute; he drew the match, meaning he had none, and died hitting the ground after jumping anyway.",
   },
   {
+    title: "The Avoided Gas Station",
     premise:
       "A man drives the same road between two cities every day, but he never stops at one particular gas station — even though it's the closest to his house and has the cheapest prices. Why?",
     solution:
       "The gas station's owner once had an affair with his wife. He can't forgive it, so he'd rather drive out of his way and pay more than ever buy gas there.",
   },
   {
+    title: "The Discarded Shoes",
     premise:
       "A woman buys a new pair of shoes, and the moment she gets home she throws them straight in the trash. Why?",
     solution:
       "She'd bought the shoes specifically for an important event, but on the day of the event she twisted her ankle badly enough to need an amputation. The shoes now only held painful memories of a foot she no longer had, so she threw them away.",
   },
   {
+    title: "The Man and the Straw",
     premise:
       "A man is found dead on the floor, gripping a drinking straw. There's no sign of a struggle anywhere nearby. How did he die?",
     solution:
       "He was a diver who breathed through a straw-like tube connected to a floating buoy on the surface. Someone stole the buoy as a souvenir while he was underwater, letting water into the tube, and he drowned.",
   },
   {
+    title: "The Dinner Party Soup",
     premise:
       "A couple hosts a dinner party. One guest takes a sip of the soup, quietly gets up and leaves, and files for divorce the next day. Why?",
     solution:

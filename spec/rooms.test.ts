@@ -90,6 +90,34 @@ it("lists a newly created room on the homepage so others can join it", async () 
   expect(html).toContain(`/rooms/${code}`);
 });
 
+it("shows a not-started case card that flips to in-progress once a question is asked", async () => {
+  const { code } = await createRoom();
+  const { cookie } = await visitRoom(code);
+
+  const before = await (await fetch(new URL("/", baseUrl))).text();
+  const cardStart = before.indexOf(`data-code="${code}"`);
+  expect(before.slice(cardStart, cardStart + 400)).toContain("Not started yet");
+
+  await fetch(new URL(`/rooms/${code}/ask`, baseUrl), {
+    method: "POST",
+    headers: { cookie, "content-type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({ question: "is this a test" }),
+  });
+
+  const after = await (await fetch(new URL("/", baseUrl))).text();
+  const cardAfter = after.indexOf(`data-code="${code}"`);
+  expect(after.slice(cardAfter, cardAfter + 400)).toContain("In progress");
+});
+
+it("redirects /join?code= to the room, case-insensitively", async () => {
+  const { code } = await createRoom();
+  const res = await fetch(new URL(`/join?code=${code.toLowerCase()}`, baseUrl), {
+    redirect: "manual",
+  });
+  expect(res.status).toBe(303);
+  expect(res.headers.get("location")).toBe(`/rooms/${code}`);
+});
+
 it("never leaks a puzzle's solution to the client while the room is active", async () => {
   const { code } = await createRoom();
   const { html } = await visitRoom(code);

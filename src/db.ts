@@ -16,6 +16,7 @@ db.exec("PRAGMA foreign_keys = ON;");
 db.exec(`
   CREATE TABLE IF NOT EXISTS puzzles (
     id TEXT PRIMARY KEY,
+    title TEXT NOT NULL DEFAULT '',
     premise TEXT NOT NULL,
     solution TEXT NOT NULL,
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
@@ -56,21 +57,19 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS qa_entries_room ON qa_entries(room_id, id);
 `);
 
-// sessions predates nickname/avatar/bio; ADD COLUMN only if a prior boot
-// (an older image, or /data carried over from before this feature) hasn't
-// already added them, since re-running it errors on a duplicate column.
-{
+// Adds a column only if a prior boot (an older image, or /data carried over
+// from before a feature existed) hasn't already added it, since re-running
+// ADD COLUMN on one that's already there errors on a duplicate column.
+function ensureColumn(table: string, column: string, ddl: string): void {
   const existing = new Set(
-    (db.prepare("PRAGMA table_info(sessions)").all() as { name: string }[]).map((c) => c.name),
+    (db.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[]).map((c) => c.name),
   );
-  for (const [column, ddl] of [
-    ["nickname", "ALTER TABLE sessions ADD COLUMN nickname TEXT"],
-    ["avatar", "ALTER TABLE sessions ADD COLUMN avatar TEXT"],
-    ["bio", "ALTER TABLE sessions ADD COLUMN bio TEXT"],
-  ] as const) {
-    if (!existing.has(column)) db.exec(ddl);
-  }
+  if (!existing.has(column)) db.exec(ddl);
 }
+ensureColumn("sessions", "nickname", "ALTER TABLE sessions ADD COLUMN nickname TEXT");
+ensureColumn("sessions", "avatar", "ALTER TABLE sessions ADD COLUMN avatar TEXT");
+ensureColumn("sessions", "bio", "ALTER TABLE sessions ADD COLUMN bio TEXT");
+ensureColumn("puzzles", "title", "ALTER TABLE puzzles ADD COLUMN title TEXT NOT NULL DEFAULT ''");
 
 // Reconciles the seed puzzles against src/data/puzzles.ts on every boot,
 // rather than inserting once when the table is empty. An "only if empty"
@@ -82,12 +81,15 @@ db.exec(`
 // mismatch here only happens when the puzzle bank itself changed underneath
 // existing rooms.
 function seedPuzzlesIfEmpty(): void {
-  const rows = db.prepare("SELECT premise, solution FROM puzzles").all() as {
+  const rows = db.prepare("SELECT title, premise, solution FROM puzzles").all() as {
+    title: string;
     premise: string;
     solution: string;
   }[];
-  const current = new Set(rows.map((r) => `${r.premise}\u0000${r.solution}`));
-  const wanted = new Set(SEED_PUZZLES.map((p) => `${p.premise}\u0000${p.solution}`));
+  const current = new Set(rows.map((r) => `${r.title}\u0000${r.premise}\u0000${r.solution}`));
+  const wanted = new Set(
+    SEED_PUZZLES.map((p) => `${p.title}\u0000${p.premise}\u0000${p.solution}`),
+  );
   const upToDate =
     current.size === wanted.size && [...current].every((entry) => wanted.has(entry));
   if (upToDate) return;
@@ -99,18 +101,26 @@ function seedPuzzlesIfEmpty(): void {
     DELETE FROM puzzles;
   `);
   const insert = db.prepare(
-    "INSERT INTO puzzles (id, premise, solution) VALUES (?, ?, ?)",
+    "INSERT INTO puzzles (id, title, premise, solution) VALUES (?, ?, ?, ?)",
   );
   for (const puzzle of SEED_PUZZLES) {
-    insert.run(randomUUID(), puzzle.premise, puzzle.solution);
+    insert.run(randomUUID(), puzzle.title, puzzle.premise, puzzle.solution);
   }
 }
 seedPuzzlesIfEmpty();
 
 export interface Puzzle {
   id: string;
+  title: string;
   premise: string;
   solution: string;
+}
+
+export interface LobbyRoom {
+  id: string;
+  code: string;
+  title: string;
+  started: boolean;
 }
 
 export interface Room {
@@ -133,7 +143,7 @@ export interface QaEntry {
 
 export function pickRandomPuzzle(): Puzzle {
   const row = db
-    .prepare("SELECT id, premise, solution FROM puzzles ORDER BY RANDOM() LIMIT 1")
+    .prepare("SELECT id, title, premise, solution FROM puzzles ORDER BY RANDOM() LIMIT 1")
     .get() as Puzzle | undefined;
   if (!row) throw new Error("no puzzles seeded");
   return row;
@@ -163,10 +173,26 @@ export function createRoom(puzzleId: string): Room {
   return { id, code, puzzle_id: puzzleId, status: "active" };
 }
 
-export function listActiveRooms(limit = 20): { code: string }[] {
-  return db
-    .prepare("SELECT code FROM rooms WHERE status = 'active' ORDER BY created_at DESC LIMIT ?")
-    .all(limit) as { code: string }[];
+// "started" is derived, not a stored state: a room with no question or guess
+// yet is distinguishable from one mid-investigation without a separate
+// ready/host flow — see PROCESS.md for why that's deliberately as far as the
+// room-state distinction goes.
+export function listActiveRooms(limit = 20): LobbyRoom[] {
+  const rows = db
+    .prepare(
+      `SELECT r.id, r.code, p.title,
+              EXISTS(
+                SELECT 1 FROM qa_entries q
+                WHERE q.room_id = r.id AND q.kind IN ('question', 'guess')
+              ) AS started
+       FROM rooms r
+       JOIN puzzles p ON p.id = r.puzzle_id
+       WHERE r.status = 'active'
+       ORDER BY r.created_at DESC
+       LIMIT ?`,
+    )
+    .all(limit) as (Omit<LobbyRoom, "started"> & { started: number })[];
+  return rows.map((r) => ({ ...r, started: Boolean(r.started) }));
 }
 
 export function getRoomByCode(code: string): Room | undefined {
@@ -176,7 +202,7 @@ export function getRoomByCode(code: string): Room | undefined {
 }
 
 export function getPuzzle(id: string): Puzzle | undefined {
-  return db.prepare("SELECT id, premise, solution FROM puzzles WHERE id = ?").get(id) as
+  return db.prepare("SELECT id, title, premise, solution FROM puzzles WHERE id = ?").get(id) as
     | Puzzle
     | undefined;
 }
