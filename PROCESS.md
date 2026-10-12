@@ -246,6 +246,34 @@ ended, even though the real HTTP connection was still open. Switched to
 driving the generator's `.next()` by hand instead of `for await`, which
 doesn't trigger that implicit close.
 
+## Splitting "ask" from "guess", and a shared waiting state
+
+A second piece of feedback (from a review of the live app): the room's one
+free-text box did double duty for both yes/no questions and a final guess,
+which the AI judge alone disambiguated — a plain question phrased
+confidently could get read as a guess and end the game early, with no way
+for a player to signal which they meant.
+
+The schema already had an unused `kind: 'guess'` value sitting in
+`qa_entries`'s CHECK constraint from the original build — nothing had ever
+set it. Added a second submit button (`name="kind" value="guess"`) to the
+same form rather than a second form, so there's still one input box and one
+`POST /rooms/:code/ask`; the browser sends whichever button's `name`/`value`
+pair was clicked (`event.submitter` on the client, `body.kind` on the
+server). The judge's system prompt now branches on `kind`: a question can
+only come back yes/no/irrelevant, a guess can only come back correct/no —
+and `clampToKind()` in `src/llm.ts` remaps a verdict that ignores that
+instruction, rather than trusting the model's compliance blindly.
+
+Also added a shared "judge is thinking" state, broadcast on the room's SSE
+channel as soon as a request starts (not after it resolves): previously
+only the person who asked saw a disabled button, so everyone else watching
+the same transcript saw nothing happen for up to 10 seconds (`TIMEOUT_MS`)
+before an answer appeared — on a slow connection that reads as the page
+being stuck, not as a judge that's still thinking. This is also this week's
+second candidate for "what reaches other people live" — the pending state
+itself is now real-time, not just the resolved answer.
+
 ## What's still open
 
 Deploying with a real `GROQ_API_KEY` as a Fly secret and a manual

@@ -31,8 +31,9 @@ function entryHtml(entry: QaEntry): string {
     return `<li class="entry entry-system">${escapeHtml(entry.body)}</li>`;
   }
   const verdictLabel = entry.verdict ? (VERDICT_LABEL[entry.verdict] ?? entry.verdict) : "…";
+  const verb = entry.kind === "guess" ? "guesses" : "asks";
   return `<li class="entry entry-${entry.kind}" data-id="${entry.id}">
-    <p class="entry-question"><span class="entry-label">${escapeHtml(entry.label ?? "Anonymous Detective")}</span> asks: ${escapeHtml(entry.body)}</p>
+    <p class="entry-question"><span class="entry-label">${escapeHtml(entry.label ?? "Anonymous Detective")}</span> ${verb}: ${escapeHtml(entry.body)}</p>
     <p class="entry-verdict">AI judge: <strong>${escapeHtml(verdictLabel)}</strong></p>
   </li>`;
 }
@@ -64,6 +65,7 @@ export function roomPage(args: {
       <p class="online-count" id="online-count">${onlineLabel(onlineCount)}</p>
       ${membersHtml(members)}
       ${notice ? `<p class="notice" role="status">${escapeHtml(notice)}</p>` : ""}
+      <p class="judging" id="judging-status" role="status" hidden></p>
 
       <ul class="transcript" id="transcript">
         ${transcript.map(entryHtml).join("\n")}
@@ -73,9 +75,12 @@ export function roomPage(args: {
         solved
           ? ""
           : `<form method="post" action="/rooms/${room.code}/ask" id="ask-form">
-        <label for="question">Ask a yes/no question, or state your final guess:</label>
+        <label for="question">Ask a yes/no question, or submit your final guess:</label>
         <input type="text" id="question" name="question" maxlength="200" required autocomplete="off" />
-        <button type="submit">Ask</button>
+        <div class="ask-buttons">
+          <button type="submit" name="kind" value="question">Ask</button>
+          <button type="submit" name="kind" value="guess" class="guess-button">Submit final guess</button>
+        </div>
       </form>`
       }
     </section>

@@ -177,6 +177,24 @@ input[type="text"] {
   flex: 1 1 16rem;
 }
 
+.ask-buttons {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.guess-button {
+  background: transparent;
+  color: var(--accent);
+  border: 1px solid var(--accent);
+}
+
+.judging {
+  font-size: 0.9rem;
+  font-style: italic;
+  opacity: 0.8;
+}
+
 .lobby {
   padding: 1.5rem 0;
 }

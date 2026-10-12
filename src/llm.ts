@@ -9,22 +9,33 @@ const GROQ_URL = "https://api.groq.com/openai/v1/chat/completions";
 const GROQ_MODEL = "llama-3.3-70b-versatile";
 const TIMEOUT_MS = 10_000;
 
-function systemPrompt(puzzle: Puzzle): string {
-  return [
+function systemPrompt(puzzle: Puzzle, kind: "question" | "guess"): string {
+  const base = [
     "You are the judge for a game of \"turtle soup\" (a lateral-thinking puzzle). You know the full solution; the player only sees the premise.",
-    "The player will ask yes/no questions, or submit a final guess.",
     "",
     `Premise: ${puzzle.premise}`,
     `Solution (never reveal this directly unless the player's guess already amounts to it): ${puzzle.solution}`,
     "",
     "Output only a JSON object shaped like {\"verdict\": \"yes\"|\"no\"|\"irrelevant\"|\"correct\", \"reply\": \"one short sentence\"}.",
-    "What each verdict means:",
-    "- yes: the question is consistent with the solution",
-    "- no: the question contradicts the solution",
-    "- irrelevant: the question is unrelated to the solution, or nothing in the solution can answer it",
-    "- correct: this was a guess, and it already captures the core of the solution",
-    "reply must never leak any part of the solution that the verdict hasn't already confirmed.",
-  ].join("\n");
+  ];
+  const verdictMeaning =
+    kind === "guess"
+      ? [
+          "The player is submitting their FINAL GUESS at the solution, not a yes/no question — judge whether it captures the core of the solution, nothing else.",
+          "- correct: the guess captures the core of the solution",
+          "- no: the guess does not capture the core of the solution",
+          "Never answer a guess with \"yes\" or \"irrelevant\" — a guess is either correct or it isn't.",
+        ]
+      : [
+          "The player is asking a yes/no question about the solution, not guessing it outright.",
+          "- yes: the question is consistent with the solution",
+          "- no: the question contradicts the solution",
+          "- irrelevant: the question is unrelated to the solution, or nothing in the solution can answer it",
+          "Never answer a question with \"correct\" — that verdict is reserved for final guesses.",
+        ];
+  return [...base, ...verdictMeaning, "reply must never leak any part of the solution that the verdict hasn't already confirmed."].join(
+    "\n",
+  );
 }
 
 function historyAsMessages(
@@ -56,11 +67,24 @@ function parseVerdict(raw: string): Verdict | undefined {
   return undefined;
 }
 
+// A guess can only ever land as "correct" or "no" — clamps a model's answer
+// that didn't follow the prompt's instruction, rather than trusting it blind.
+function clampToKind(verdict: Verdict, kind: "question" | "guess"): Verdict {
+  if (kind === "guess" && (verdict.verdict === "yes" || verdict.verdict === "irrelevant")) {
+    return { ...verdict, verdict: "no" };
+  }
+  if (kind === "question" && verdict.verdict === "correct") {
+    return { ...verdict, verdict: "irrelevant" };
+  }
+  return verdict;
+}
+
 async function judgeWithGroq(
   apiKey: string,
   puzzle: Puzzle,
   history: QaEntry[],
   question: string,
+  kind: "question" | "guess",
 ): Promise<Verdict> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), TIMEOUT_MS);
@@ -76,7 +100,7 @@ async function judgeWithGroq(
         response_format: { type: "json_object" },
         temperature: 0.2,
         messages: [
-          { role: "system", content: systemPrompt(puzzle) },
+          { role: "system", content: systemPrompt(puzzle, kind) },
           ...historyAsMessages(history),
           { role: "user", content: question },
         ],
@@ -90,7 +114,7 @@ async function judgeWithGroq(
     const content = data.choices[0]?.message.content ?? "";
     const verdict = parseVerdict(content);
     if (!verdict) throw new Error("judge returned unparseable output");
-    return verdict;
+    return clampToKind(verdict, kind);
   } finally {
     clearTimeout(timeout);
   }
@@ -100,13 +124,18 @@ async function judgeWithGroq(
 // course's LLM proxy key is ANU-network-restricted and can't be reached from
 // a Fly machine or a GitHub runner. Keeps `pnpm check` deterministic and free
 // of a third-party secret; production always has a real key.
-function judgeWithMock(puzzle: Puzzle, question: string): Verdict {
+function judgeWithMock(puzzle: Puzzle, question: string, kind: "question" | "guess"): Verdict {
   const q = question.toLowerCase();
   const solutionWords = puzzle.solution
     .replace(/[^\p{L}\p{N}]+/gu, " ")
     .split(" ")
     .filter((w) => w.length >= 2);
   const hit = solutionWords.some((w) => q.includes(w.toLowerCase()));
+  if (kind === "guess") {
+    return hit
+      ? { verdict: "correct", reply: "Correct (mock judge: keyword match)" }
+      : { verdict: "no", reply: "Not quite (mock judge: GROQ_API_KEY not set)" };
+  }
   return hit
     ? { verdict: "yes", reply: "Yes (mock judge: keyword match)" }
     : { verdict: "irrelevant", reply: "Can't tell (mock judge: GROQ_API_KEY not set)" };
@@ -116,11 +145,12 @@ export async function judge(
   puzzle: Puzzle,
   history: QaEntry[],
   question: string,
+  kind: "question" | "guess" = "question",
 ): Promise<Verdict | undefined> {
   const apiKey = process.env.GROQ_API_KEY;
-  if (!apiKey) return judgeWithMock(puzzle, question);
+  if (!apiKey) return judgeWithMock(puzzle, question, kind);
   try {
-    return await judgeWithGroq(apiKey, puzzle, history, question);
+    return await judgeWithGroq(apiKey, puzzle, history, question, kind);
   } catch {
     // caller inserts a system "AI didn't respond" entry instead of failing silently
     return undefined;

@@ -25,18 +25,25 @@
       li.textContent = entry.body;
     } else {
       const verdictLabel = entry.verdict ? VERDICT_LABEL[entry.verdict] ?? entry.verdict : "…";
+      const verb = entry.kind === "guess" ? "guesses" : "asks";
       li.innerHTML = `
-        <p class="entry-question"><span class="entry-label">${escapeHtml(entry.label ?? "Anonymous Detective")}</span> asks: ${escapeHtml(entry.body)}</p>
+        <p class="entry-question"><span class="entry-label">${escapeHtml(entry.label ?? "Anonymous Detective")}</span> ${verb}: ${escapeHtml(entry.body)}</p>
         <p class="entry-verdict">AI judge: <strong>${escapeHtml(verdictLabel)}</strong></p>
       `;
     }
     return li;
   }
 
+  const judgingEl = document.getElementById("judging-status");
+  function hideJudging() {
+    if (judgingEl) judgingEl.hidden = true;
+  }
+
   function appendEntry(entry) {
     const id = String(entry.id);
     if (seen.has(id)) return;
     seen.add(id);
+    hideJudging(); // every path that reaches this appends at least one entry
     transcript.appendChild(renderEntry(entry));
     transcript.lastElementChild.scrollIntoView({ block: "nearest" });
     if (entry.verdict === "correct") {
@@ -64,6 +71,12 @@
   source.addEventListener("presence", (event) => {
     renderPresence(JSON.parse(event.data));
   });
+  source.addEventListener("judging", (event) => {
+    if (!judgingEl) return;
+    const { label } = JSON.parse(event.data);
+    judgingEl.textContent = `⌛ ${label} is waiting on the AI judge…`;
+    judgingEl.hidden = false;
+  });
 
   // Navigating away (e.g. clicking a link) doesn't necessarily tear down an
   // in-flight EventSource right away — the browser may leave it dangling for
@@ -75,34 +88,41 @@
   const form = document.getElementById("ask-form");
   if (!form) return;
   const input = form.querySelector("#question");
-  const button = form.querySelector("button");
+  const buttons = [...form.querySelectorAll("button")];
 
   form.addEventListener("submit", async (event) => {
     event.preventDefault();
     const question = input.value.trim();
     if (!question) return;
 
-    button.disabled = true;
-    const originalLabel = button.textContent;
-    button.textContent = "AI judge is thinking…";
+    // event.submitter is which of the two buttons was actually clicked —
+    // the request needs to know whether this is a question or a final guess.
+    const kind = event.submitter?.value === "guess" ? "guess" : "question";
+    const clicked = event.submitter ?? buttons[0];
+    const originalLabel = clicked.textContent;
+
+    for (const b of buttons) b.disabled = true;
+    clicked.textContent = kind === "guess" ? "Judge is weighing your guess…" : "AI judge is thinking…";
 
     try {
       await fetch(form.action, {
         method: "POST",
         headers: { "Content-Type": "application/x-www-form-urlencoded" },
-        body: new URLSearchParams({ question }),
+        body: new URLSearchParams({ question, kind }),
       });
       input.value = "";
     } catch {
       // the SSE connection or a page refresh will still show the true state;
       // surface a hint rather than failing silently
-      button.textContent = "Network seems unstable, please retry";
+      clicked.textContent = "Network seems unstable, please retry";
       setTimeout(() => {
-        button.textContent = originalLabel;
+        clicked.textContent = originalLabel;
       }, 2000);
     } finally {
-      button.disabled = false;
-      if (button.textContent === "AI judge is thinking…") button.textContent = originalLabel;
+      for (const b of buttons) b.disabled = false;
+      if (clicked.textContent !== "Network seems unstable, please retry") {
+        clicked.textContent = originalLabel;
+      }
       input.focus();
     }
   });
