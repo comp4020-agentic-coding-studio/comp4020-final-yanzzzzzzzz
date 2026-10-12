@@ -151,10 +151,32 @@ it("redirects /join?code= to the room, case-insensitively", async () => {
 });
 
 it("shows a solve recap with stats once a guess is correct", async () => {
-  const { code } = await createRoom();
-  const { cookie, html } = await visitRoom(code);
-  const puzzle = SEED_PUZZLES.find((p) => html.includes(p.premise));
-  if (!puzzle) throw new Error("couldn't match the room's puzzle from its premise");
+  // Picks a known official puzzle explicitly rather than a bare random
+  // create + reverse-matching the premise against SEED_PUZZLES: other tests
+  // (spec/room-lifecycle.test.ts) share authored puzzles into the same
+  // pool pickRandomPuzzle() draws from, so "a fresh room's puzzle is one of
+  // SEED_PUZZLES" isn't guaranteed once other tests have run concurrently.
+  const picker = await (await fetch(new URL("/rooms/new?mode=existing", baseUrl))).text();
+  const match = picker.match(/<option value="([^"]+)">([^<]+) — official/);
+  if (!match) throw new Error("no official puzzle found in the picker");
+  const [, puzzleId, rawTitle] = match;
+  const puzzle = SEED_PUZZLES.find((p) => p.title === rawTitle.trim());
+  if (!puzzle) throw new Error(`picker listed an official puzzle not in SEED_PUZZLES: ${rawTitle}`);
+
+  const create = await fetch(new URL("/rooms", baseUrl), {
+    method: "POST",
+    headers: { "content-type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({ mode: "existing", puzzleId }),
+    redirect: "manual",
+  });
+  const code = (create.headers.get("location") ?? "").split("/").pop() ?? "";
+  const cookie = parseCookie(create.headers.getSetCookie());
+  await fetch(new URL(`/rooms/${code}/start`, baseUrl), {
+    method: "POST",
+    headers: { cookie },
+    redirect: "manual",
+  });
+
   const word = puzzle.solution.match(/[A-Za-z]{4,}/)?.[0];
   if (!word) throw new Error("no usable keyword in this puzzle's solution");
 
