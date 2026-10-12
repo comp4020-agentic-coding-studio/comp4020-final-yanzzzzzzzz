@@ -42,6 +42,10 @@ and persistent. This app isn't three checkboxes bolted onto an unrelated idea
   broadcasts a shared "judge is thinking" state the instant a question or
   guess is submitted, so a slow verdict reads as pending to everyone in the
   room, not as a stuck page to everyone except the person who asked.
+  Solving a case shows a recap — the solution, how many questions were
+  asked, how many people were in the room, and how long it took — computed
+  from data already on hand (the transcript, `room_participants`, and the
+  room's own timestamps), not a new stats system.
 - **Persists.** A case that vanishes the moment the single Fly machine goes
   to sleep (which it does, by design, between visits) isn't a case anyone can
   come back to. Every room, participant, and transcript entry is written to a

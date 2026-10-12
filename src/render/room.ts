@@ -19,6 +19,40 @@ function membersHtml(members: string[]): string {
   </ul>`;
 }
 
+// Room timestamps come back from SQLite as "YYYY-MM-DD HH:MM:SS" in UTC with
+// no zone marker — the same shape rooms.ts's cooldown check already parses.
+function parseSqliteTime(s: string): number {
+  return Date.parse(`${s.replace(" ", "T")}Z`);
+}
+
+function formatDuration(ms: number): string {
+  const totalSeconds = Math.max(0, Math.round(ms / 1000));
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return minutes === 0 ? `${seconds}s` : `${minutes}m ${seconds}s`;
+}
+
+function recapHtml(room: Room, puzzle: Puzzle, transcript: QaEntry[], participants: number): string {
+  const askedCount = transcript.filter((e) => e.kind === "question" || e.kind === "guess").length;
+  const solvedEntry = transcript.find((e) => e.verdict === "correct");
+  const duration = solvedEntry
+    ? formatDuration(parseSqliteTime(solvedEntry.created_at) - parseSqliteTime(room.created_at))
+    : null;
+
+  return `<section class="recap">
+    <p class="solved-banner">🎉 Case solved! The truth: ${escapeHtml(puzzle.solution)}</p>
+    <p class="recap-stats">
+      <span>❓ ${askedCount} question${askedCount === 1 ? "" : "s"} asked</span>
+      <span>👥 ${participants} participant${participants === 1 ? "" : "s"}</span>
+      ${duration ? `<span>⏱️ solved in ${duration}</span>` : ""}
+    </p>
+    <div class="recap-actions">
+      <form method="post" action="/rooms"><button type="submit">Play again</button></form>
+      <a href="/" class="recap-lobby">Back to lobby</a>
+    </div>
+  </section>`;
+}
+
 function entryHtml(entry: QaEntry): string {
   if (entry.kind === "system") {
     return `<li class="entry entry-system">${escapeHtml(entry.body)}</li>`;
@@ -40,8 +74,10 @@ export function roomPage(args: {
   onlineCount: number;
   members: string[];
   profile: Profile;
+  participants: number;
 }): string {
-  const { room, puzzle, transcript, label, notice, onlineCount, members, profile } = args;
+  const { room, puzzle, transcript, label, notice, onlineCount, members, profile, participants } =
+    args;
   const solved = room.status === "solved";
 
   return layout(
@@ -50,11 +86,7 @@ export function roomPage(args: {
     <section class="room" data-room-code="${room.code}" data-last-id="${transcript.at(-1)?.id ?? 0}" data-solved="${solved}">
       <h1>Case #${room.code}</h1>
       <p class="premise">${escapeHtml(puzzle.premise)}</p>
-      ${
-        solved
-          ? `<p class="solved-banner">🎉 Case solved! The truth: ${escapeHtml(puzzle.solution)}</p>`
-          : ""
-      }
+      ${solved ? recapHtml(room, puzzle, transcript, participants) : ""}
       <p class="whoami">You are <strong>${escapeHtml(label)}</strong></p>
       <p class="online-count" id="online-count">${onlineLabel(onlineCount)}</p>
       ${membersHtml(members)}

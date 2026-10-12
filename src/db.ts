@@ -128,6 +128,7 @@ export interface Room {
   code: string;
   puzzle_id: string;
   status: "active" | "solved";
+  created_at: string;
 }
 
 export interface QaEntry {
@@ -170,7 +171,9 @@ export function createRoom(puzzleId: string): Room {
     code,
     puzzleId,
   );
-  return { id, code, puzzle_id: puzzleId, status: "active" };
+  return db
+    .prepare("SELECT id, code, puzzle_id, status, created_at FROM rooms WHERE id = ?")
+    .get(id) as unknown as Room;
 }
 
 // "started" is derived, not a stored state: a room with no question or guess
@@ -197,8 +200,16 @@ export function listActiveRooms(limit = 20): LobbyRoom[] {
 
 export function getRoomByCode(code: string): Room | undefined {
   return db
-    .prepare("SELECT id, code, puzzle_id, status FROM rooms WHERE code = ?")
+    .prepare("SELECT id, code, puzzle_id, status, created_at FROM rooms WHERE code = ?")
     .get(code.toUpperCase()) as Room | undefined;
+}
+
+export function countParticipants(roomId: string): number {
+  return (
+    db
+      .prepare("SELECT COUNT(*) AS n FROM room_participants WHERE room_id = ?")
+      .get(roomId) as { n: number }
+  ).n;
 }
 
 export function getPuzzle(id: string): Puzzle | undefined {

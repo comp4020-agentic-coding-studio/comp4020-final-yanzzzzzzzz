@@ -118,6 +118,32 @@ it("redirects /join?code= to the room, case-insensitively", async () => {
   expect(res.headers.get("location")).toBe(`/rooms/${code}`);
 });
 
+it("shows a solve recap with stats once a guess is correct", async () => {
+  const { code } = await createRoom();
+  const { cookie, html } = await visitRoom(code);
+  const puzzle = SEED_PUZZLES.find((p) => html.includes(p.premise));
+  if (!puzzle) throw new Error("couldn't match the room's puzzle from its premise");
+  const word = puzzle.solution.match(/[A-Za-z]{4,}/)?.[0];
+  if (!word) throw new Error("no usable keyword in this puzzle's solution");
+
+  await fetch(new URL(`/rooms/${code}/ask`, baseUrl), {
+    method: "POST",
+    headers: { cookie, "content-type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({ question: word, kind: "guess" }),
+  });
+
+  const after = await (
+    await fetch(new URL(`/rooms/${code}`, baseUrl), { headers: { cookie } })
+  ).text();
+  expect(after).toContain('class="recap"');
+  expect(after).toContain("1 question asked");
+  expect(after).toContain("1 participant");
+  // The room escapes quotes as &quot; when rendering, so compare against the
+  // same escaped form rather than the raw solution text — a few of the seed
+  // puzzles' solutions contain a literal " (e.g. a quoted recipe name).
+  expect(after).toContain(puzzle.solution.replace(/"/g, "&quot;"));
+});
+
 it("never leaks a puzzle's solution to the client while the room is active", async () => {
   const { code } = await createRoom();
   const { html } = await visitRoom(code);
