@@ -563,6 +563,52 @@ empty under the new schema; the only real user data on the volume,
 446 sessions' nicknames/avatars/bios, was untouched throughout), so nothing
 of value was lost by letting the self-heal drop them.
 
+## The first fix was incomplete, and made the outage worse before fixing it
+
+Deploying the `DROP TABLE IF EXISTS rooms_old` fix above took the app from
+"crash-looping, serving nothing" to "crash-looping with a different error" —
+`no such table: main.rooms_old` — which meant the app was *still* down
+immediately after a fix that had been reproduced and verified locally. The
+gap: I'd verified the fix against a throwaway DB with `rooms_old` holding
+rows, but `room_participants`/`qa_entries` empty — accurate to what the
+reconciliation path's crash looked like, but not what dropping `rooms_old`
+itself would expose next on the real volume.
+
+Querying `/data/app.db`'s schema directly (not just its row counts, which is
+as far as the first investigation went) surfaced the actual shape: SQLite's
+`ALTER TABLE rooms RENAME TO rooms_old` doesn't just rename that one table —
+it silently rewrites *every other table's* `REFERENCES rooms(id)` clause to
+point at `rooms_old` instead, since SQLite's rename follows the reference.
+`76be42c`'s migration never re-pointed `room_participants`/`qa_entries`
+afterward, so their schema has said `REFERENCES "rooms_old"(id)` since that
+commit — invisible the whole time `rooms_old` still physically existed to
+satisfy it. Dropping `rooms_old` turned an inert latent bug into an active
+one: both tables now referenced a table that didn't exist, and SQLite
+enforces that on any write to them, even an empty `DELETE`.
+
+Rebuilt this reproduction more carefully before trusting a second fix:
+seeded a throwaway DB with the *exact* schema found on the volume (`rooms_old`
+with rows, but the children's DDL — not just their data — carrying the
+dangling `"rooms_old"` reference), confirmed the committed fix crashed on it
+with the identical `no such table` error seen in production, then added
+`repointRoomIdForeignKey()` — rebuilds `room_participants`/`qa_entries` in
+place (rename, recreate from the same DDL with `"rooms_old"` swapped for
+`rooms`, copy every row, drop the renamed original) before `rooms_old` is
+ever touched, so neither table's FK can go stale no matter what happens to
+that table afterward. Verified against the same reproduction: clean boot,
+schema correctly reads `REFERENCES rooms(id)` on both tables afterward, and
+a full create-room → start → ask-a-question flow against it all returned
+the expected statuses with no crash — not just a boot that doesn't throw.
+Also reran it a second time against its own already-fixed output to confirm
+the repoint is a one-time no-op once applied, not something that re-triggers
+every boot.
+
+The standing lesson, not just this bug: verifying a database migration fix
+against a reproduction that matches *symptoms* (the crash message, the row
+counts) isn't the same as matching the actual schema on disk. The second
+investigation read `sqlite_master.sql` directly instead of inferring shape
+from behavior, and that's what caught the dangling FK the first pass missed.
+
 ## What's still open
 
 **`GROQ_API_KEY` is not set on the live Fly app.** Posting a question to the
