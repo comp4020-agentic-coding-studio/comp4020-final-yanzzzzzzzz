@@ -97,7 +97,19 @@ function ensureRoomsHaveWaitingStatus(): void {
         .prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'rooms'")
         .get() as { sql: string } | undefined
     )?.sql ?? "";
-  if (ddl.includes("'waiting'")) return;
+  if (ddl.includes("'waiting'")) {
+    // A prior boot can crash after this function creates the new `rooms`
+    // table but before its own DROP TABLE at the end (this happened for
+    // real on /data: a FOREIGN KEY failure elsewhere during startup killed
+    // the process mid-migration). On the next boot the check above returns
+    // early since `rooms` already has the new schema, so the leftover
+    // `rooms_old` — still FOREIGN KEY-ing into `puzzles` — never gets
+    // cleaned up and permanently breaks seedPuzzlesIfEmpty()'s `DELETE FROM
+    // puzzles`. Clean it up here unconditionally so a crash mid-migration
+    // self-heals on the next boot instead of wedging the app forever.
+    db.exec("DROP TABLE IF EXISTS rooms_old");
+    return;
+  }
 
   db.exec("ALTER TABLE rooms RENAME TO rooms_old");
   db.exec(`
