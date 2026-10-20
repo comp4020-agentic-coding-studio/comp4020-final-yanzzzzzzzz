@@ -521,6 +521,48 @@ existing `pnpm check` suite, which exercises every page's markup but not its
 rendered layout. A real resize-mid-interaction and keyboard-tab-order pass
 in an actual browser is recorded as still outstanding, not assumed done.
 
+## The live app was down, not just serving a stale mock judge
+
+Checking in on the deployed site turned up something worse than the open
+`GROQ_API_KEY` item below: every `/rooms/:code` page returned 500, and the
+Fly machine's own status was `stopped` — not asleep from `auto_stop_machines`,
+but parked there because the app process had crashed on boot 10 times in a
+row and Fly gave up restarting it. `flyctl logs` (needed `flyctl auth login`
+first, since no Fly token had ever been configured for this specific repo —
+a token for a different week's repo isn't valid here, each is scoped to one
+app) showed the exact failure: `FOREIGN KEY constraint failed` inside
+`seedPuzzlesIfEmpty()`'s `DELETE FROM puzzles`.
+
+Root cause, confirmed by reading `/data/app.db` directly over `flyctl ssh
+console` (the runtime image has no `sqlite3` CLI, so this used `node:sqlite`
+— the same module the app itself uses — rather than installing a new tool):
+a `rooms_old` table was still sitting on the volume, left over from
+`ensureRoomsHaveWaitingStatus()`'s rename-recreate-copy-drop migration
+(`76be42c`, the host-roles commit). That function's final `DROP TABLE
+rooms_old` never ran on a prior boot — the process crashed before reaching
+it — and the function's own "already migrated?" check only looks at whether
+`rooms` has the new schema, so every later boot skipped the migration branch
+entirely and never got a second chance to clean up the leftover table.
+`rooms_old`'s `puzzle_id` column still carries its own `REFERENCES
+puzzles(id)`, so SQLite enforces that constraint against `rooms_old`'s rows
+on *any* `DELETE FROM puzzles` — the seeding reconciliation already
+documented above — regardless of whether the app's own code still reads
+from that table. Six rooms were trapped in `rooms_old`, invisible to the
+real `rooms` table but still blocking every boot.
+
+Fixed by making the "already migrated" branch also unconditionally
+`DROP TABLE IF EXISTS rooms_old` before returning, so a crash mid-migration
+self-heals on the very next boot instead of wedging the app in a permanent
+restart loop. Reproduced the exact crash first against a throwaway database
+seeded with the same broken shape (new `rooms` schema + a leftover
+`rooms_old` referencing `puzzles`), confirmed the old code crashes on it and
+the fixed code boots clean and leaves `rooms_old` gone — not just inferred
+from the production stack trace. The six trapped rooms had no real
+transcript or participant data (`qa_entries`/`room_participants` were both
+empty under the new schema; the only real user data on the volume,
+446 sessions' nicknames/avatars/bios, was untouched throughout), so nothing
+of value was lost by letting the self-heal drop them.
+
 ## What's still open
 
 **`GROQ_API_KEY` is not set on the live Fly app.** Posting a question to the
