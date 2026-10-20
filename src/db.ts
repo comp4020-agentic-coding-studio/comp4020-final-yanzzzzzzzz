@@ -90,6 +90,33 @@ ensureColumn("puzzles", "shared", "ALTER TABLE puzzles ADD COLUMN shared INTEGER
 // implied them — a room with no question/guess yet becomes 'waiting', one
 // with questions becomes 'active', and its earliest joiner (if any) becomes
 // its host, since nothing recorded an explicit host before this existed.
+// SQLite's `ALTER TABLE rooms RENAME TO rooms_old` (below) silently rewrites
+// every OTHER table's `REFERENCES rooms(id)` clause to `REFERENCES
+// "rooms_old"(id)` too — not just the renamed table's own DDL. This migration
+// never re-pointed room_participants/qa_entries back at the new `rooms`
+// table afterward, so their schema has carried a dangling reference to
+// `rooms_old` ever since `76be42c`, invisible as long as `rooms_old` still
+// physically existed on disk. Rebuilds a table in place with its `room_id`
+// FK corrected to `rooms(id)`, preserving every row — used for both tables
+// before `rooms_old` is ever dropped, so the drop can't strand a live FK.
+function repointRoomIdForeignKey(table: "room_participants" | "qa_entries"): void {
+  const ddl =
+    (
+      db.prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = ?").get(table) as
+        | { sql: string }
+        | undefined
+    )?.sql ?? "";
+  if (!ddl.includes('"rooms_old"')) return;
+
+  db.exec(`ALTER TABLE ${table} RENAME TO ${table}_stale_fk`);
+  db.exec(ddl.replace('"rooms_old"', "rooms"));
+  const columns = (db.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[])
+    .map((c) => c.name)
+    .join(", ");
+  db.exec(`INSERT INTO ${table} (${columns}) SELECT ${columns} FROM ${table}_stale_fk`);
+  db.exec(`DROP TABLE ${table}_stale_fk`);
+}
+
 function ensureRoomsHaveWaitingStatus(): void {
   const ddl =
     (
@@ -103,10 +130,15 @@ function ensureRoomsHaveWaitingStatus(): void {
     // real on /data: a FOREIGN KEY failure elsewhere during startup killed
     // the process mid-migration). On the next boot the check above returns
     // early since `rooms` already has the new schema, so the leftover
-    // `rooms_old` — still FOREIGN KEY-ing into `puzzles` — never gets
-    // cleaned up and permanently breaks seedPuzzlesIfEmpty()'s `DELETE FROM
-    // puzzles`. Clean it up here unconditionally so a crash mid-migration
-    // self-heals on the next boot instead of wedging the app forever.
+    // `rooms_old` — still FOREIGN KEY-ing into `puzzles`, and still what
+    // room_participants/qa_entries' own FK secretly points at (see
+    // repointRoomIdForeignKey above) — never gets cleaned up and
+    // permanently breaks seedPuzzlesIfEmpty()'s `DELETE FROM puzzles`.
+    // Fix the dangling FKs first, then clean it up here unconditionally so
+    // a crash mid-migration self-heals on the next boot instead of wedging
+    // the app forever.
+    repointRoomIdForeignKey("room_participants");
+    repointRoomIdForeignKey("qa_entries");
     db.exec("DROP TABLE IF EXISTS rooms_old");
     return;
   }
@@ -138,6 +170,8 @@ function ensureRoomsHaveWaitingStatus(): void {
       ro.created_at
     FROM rooms_old ro;
   `);
+  repointRoomIdForeignKey("room_participants");
+  repointRoomIdForeignKey("qa_entries");
   db.exec("DROP TABLE rooms_old");
 }
 ensureRoomsHaveWaitingStatus();
