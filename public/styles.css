@@ -342,6 +342,27 @@ textarea:focus-visible {
   border-radius: 0.3rem;
 }
 
+.share-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.share-button {
+  font-size: 0.85rem;
+  padding: 0.4rem 0.8rem;
+  background: transparent;
+  color: var(--accent);
+  border: 1px solid var(--accent);
+}
+
+.share-feedback {
+  font-size: 0.85rem;
+  opacity: 0.85;
+}
+
 .waiting-room {
   padding: 1rem;
   margin-bottom: 1rem;
@@ -443,6 +464,14 @@ textarea:focus-visible {
   padding: 0.6rem 1rem;
   border-radius: 0.4rem;
   background: color-mix(in srgb, orange 20%, var(--bg));
+}
+
+.connection-status {
+  padding: 0.5rem 0.9rem;
+  margin: 0.5rem 0;
+  border-radius: 0.4rem;
+  background: color-mix(in srgb, orange 25%, var(--bg));
+  font-size: 0.9rem;
 }
 
 .transcript {
@@ -678,6 +707,15 @@ textarea:focus-visible {
 .profile-stats {
   margin-top: 1.5rem;
   opacity: 0.8;
+}
+
+.not-found {
+  padding: 2rem 0;
+  text-align: center;
+}
+
+.not-found-actions {
+  margin-top: 1.5rem;
 }
 
 .readme h1,

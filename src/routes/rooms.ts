@@ -26,6 +26,7 @@ import { broadcast, connectionCount, listMembers, subscribe } from "../sse.ts";
 import { getOrCreateSessionId } from "../session.ts";
 import { roomPage } from "../render/room.ts";
 import { newRoomPage } from "../render/room-new.ts";
+import { roomNotFoundPage } from "../render/not-found.ts";
 import { LOBBY_CHANNEL } from "./lobby.ts";
 
 const COOLDOWN_MS = 5_000;
@@ -102,10 +103,17 @@ rooms.get("/join", (c) => {
 });
 
 rooms.get("/rooms/:code", (c) => {
-  const room = getRoomByCode(c.req.param("code"));
-  if (!room) return c.notFound();
+  const code = c.req.param("code");
+  const room = getRoomByCode(code);
+  if (!room) {
+    const profile = getProfile(getOrCreateSessionId(c));
+    return c.html(roomNotFoundPage(code, profile), 404);
+  }
   const puzzle = getPuzzle(room.puzzle_id);
-  if (!puzzle) return c.notFound();
+  if (!puzzle) {
+    const profile = getProfile(getOrCreateSessionId(c));
+    return c.html(roomNotFoundPage(code, profile), 404);
+  }
 
   const sessionId = getOrCreateSessionId(c);
   const label = displayLabel(room.id, sessionId);

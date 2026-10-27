@@ -147,9 +147,15 @@ export function roomPage(args: {
         <h1>${heading}</h1>
         <p class="room-subtitle">
           playing <strong>${escapeHtml(puzzle.title)}</strong>
-          · <span class="room-code">Code: <code>${room.code}</code></span>
+          · <span class="room-code">Code: <code id="room-code-value">${room.code}</code></span>
         </p>
+        <div class="share-row">
+          <button type="button" class="share-button" id="copy-code-button" data-code="${room.code}">Copy code</button>
+          <button type="button" class="share-button" id="copy-link-button">Copy room link</button>
+          <span class="share-feedback" id="share-feedback" role="status" aria-live="polite"></span>
+        </div>
         <p class="premise">${escapeHtml(puzzle.premise)}</p>
+        <p class="connection-status" id="connection-status" role="status" aria-live="polite" hidden></p>
         ${solved ? recapHtml(room, puzzle, transcript, participants) : ""}
         ${waiting ? waitingHtml(room, isHost) : ""}
         ${notice ? `<p class="notice" role="status">${escapeHtml(notice)}</p>` : ""}

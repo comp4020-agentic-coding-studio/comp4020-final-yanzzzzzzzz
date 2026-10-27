@@ -67,6 +67,46 @@ function labelsOf(members: { sessionId: string; label: string }[]): string[] {
 }
 
 it(
+  "counts the same session's two open tabs as one person online, not two",
+  async () => {
+    const { code } = await createRoom();
+    const { cookie } = await visitRoom(code);
+
+    const controllerTabA = new AbortController();
+    const resTabA = await fetch(new URL(`/rooms/${code}/stream`, baseUrl), {
+      headers: { cookie },
+      signal: controllerTabA.signal,
+    });
+    const genTabA = sseEvents(resTabA);
+    const afterTabA = await nextPresence(genTabA);
+    expect(afterTabA.online).toBe(1);
+
+    // A second open stream for the SAME session cookie — e.g. a second
+    // browser tab on the same room, not a second person.
+    const controllerTabB = new AbortController();
+    const resTabB = await fetch(new URL(`/rooms/${code}/stream`, baseUrl), {
+      headers: { cookie },
+      signal: controllerTabB.signal,
+    });
+    const genTabB = sseEvents(resTabB);
+
+    const afterTabBJoins = await nextPresence(genTabA);
+    expect(afterTabBJoins.online).toBe(1);
+    expect(labelsOf(afterTabBJoins.members)).toEqual(["Anonymous Detective#1"]);
+    await nextPresence(genTabB); // tab B's own connect-time broadcast
+
+    // Closing one of the two tabs still leaves the session's other tab
+    // connected, so the online count stays at 1, not 0.
+    controllerTabA.abort();
+    const afterTabACloses = await nextPresence(genTabB);
+    expect(afterTabACloses.online).toBe(1);
+
+    controllerTabB.abort();
+  },
+  10_000,
+);
+
+it(
   "shows a live member list that updates as people join and leave",
   async () => {
     const { code } = await createRoom();

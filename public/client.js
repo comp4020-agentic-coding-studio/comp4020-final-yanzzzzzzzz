@@ -81,16 +81,38 @@
     }
   }
 
+  // Fly's auto-stop/auto-start cycle (and any ordinary network blip) can cut
+  // this connection mid-session — EventSource reconnects on its own with no
+  // code needed, but a silent reconnect still looks, to a person watching
+  // the page, exactly like a stuck one. This surfaces that state instead of
+  // leaving it invisible: visible the moment a drop is detected, cleared the
+  // moment a message actually arrives again (not merely "connected", since
+  // `onopen` can fire before the server has anything new to say).
+  const connectionStatusEl = document.getElementById("connection-status");
+  function setConnectionStatus(message) {
+    if (!connectionStatusEl) return;
+    connectionStatusEl.textContent = message;
+    connectionStatusEl.hidden = !message;
+  }
+
   const lastId = section.dataset.lastId ? Number(section.dataset.lastId) : 0;
   const source = new EventSource(`/rooms/${roomCode}/stream?after=${lastId}`);
   source.onmessage = (event) => {
+    setConnectionStatus("");
     if (!event.data) return; // heartbeat
     appendEntry(JSON.parse(event.data));
   };
+  source.onerror = () => {
+    if (source.readyState === EventSource.CONNECTING) {
+      setConnectionStatus("⚠️ Connection lost, reconnecting…");
+    }
+  };
   source.addEventListener("presence", (event) => {
+    setConnectionStatus("");
     renderPresence(JSON.parse(event.data));
   });
   source.addEventListener("judging", (event) => {
+    setConnectionStatus("");
     if (!judgingEl) return;
     const { label } = JSON.parse(event.data);
     judgingEl.textContent = `⌛ ${label} is waiting on the AI judge…`;
@@ -103,6 +125,46 @@
   // pagehide tells the server immediately, so the online count drops without
   // a delay.
   window.addEventListener("pagehide", () => source.close());
+
+  // Copy-to-clipboard for the room code and the shareable link. Both are
+  // plain <button type="button">s with no form action, so with JS off
+  // they're simply inert — the code and the URL are both already visible as
+  // text, which is the fallback.
+  (() => {
+    const feedback = document.getElementById("share-feedback");
+    let feedbackTimer = null;
+    function showFeedback(message) {
+      if (!feedback) return;
+      feedback.textContent = message;
+      clearTimeout(feedbackTimer);
+      feedbackTimer = setTimeout(() => {
+        feedback.textContent = "";
+      }, 3000);
+    }
+
+    async function copy(text, label) {
+      try {
+        await navigator.clipboard.writeText(text);
+        showFeedback(`${label} copied`);
+      } catch {
+        showFeedback(`Couldn't copy — ${label.toLowerCase()} is ${text}`);
+      }
+    }
+
+    const copyCodeButton = document.getElementById("copy-code-button");
+    if (copyCodeButton) {
+      copyCodeButton.addEventListener("click", () => {
+        copy(copyCodeButton.dataset.code, "Code");
+      });
+    }
+
+    const copyLinkButton = document.getElementById("copy-link-button");
+    if (copyLinkButton) {
+      copyLinkButton.addEventListener("click", () => {
+        copy(location.href, "Link");
+      });
+    }
+  })();
 
   // Reasoning-time heartbeat: only while this tab is the visible one and the
   // room is actually active (not waiting, not solved) — a heartbeat is a

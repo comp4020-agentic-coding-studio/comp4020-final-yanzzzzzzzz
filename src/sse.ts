@@ -42,22 +42,37 @@ export function broadcast(
   for (const client of set) client.write(payload);
 }
 
-// How many clients currently hold a live connection to this channel — used
-// as the room's "online" count, since it's exactly who's actually watching
-// right now, not who has ever spoken in the room.
+// How many DISTINCT SESSIONS currently hold a live connection to this
+// channel — not how many open tabs/connections exist. Two tabs for the same
+// anonymous session are one person sitting at one screen, so they count
+// once, the same way a lobby card's "people in this room" number and a
+// room's "online" count should both read as real headcount rather than
+// connection count. A channel with no session concept at all (the sitewide
+// lobby — see subscribe()'s Client type) has no sessions to dedupe, so every
+// connection there counts as itself.
 export function connectionCount(channel: string): number {
-  return channels.get(channel)?.size ?? 0;
+  const set = channels.get(channel);
+  if (!set) return 0;
+  const sessions = new Set<string>();
+  let unidentified = 0;
+  for (const c of set) {
+    if (c.sessionId) sessions.add(c.sessionId);
+    else unidentified++;
+  }
+  return sessions.size + unidentified;
 }
 
-// Who currently holds a live connection — same connection set as
-// connectionCount, just naming the members instead of counting them. A
-// session with two tabs open shows up twice, same as it counts twice.
+// Who currently holds a live connection, one row per distinct session (not
+// per tab) — same dedup rule as connectionCount, just naming the members
+// instead of counting them. Keeps whichever label each session connected
+// with most recently, since a label can't meaningfully differ across a
+// session's own tabs.
 export function listMembers(channel: string): Member[] {
   const set = channels.get(channel);
   if (!set) return [];
-  const members: Member[] = [];
+  const bySession = new Map<string, Member>();
   for (const c of set) {
-    if (c.label && c.sessionId) members.push({ sessionId: c.sessionId, label: c.label });
+    if (c.label && c.sessionId) bySession.set(c.sessionId, { sessionId: c.sessionId, label: c.label });
   }
-  return members;
+  return [...bySession.values()];
 }
