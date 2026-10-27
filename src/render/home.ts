@@ -155,7 +155,8 @@ export function homePage(args: {
           and let friends join with just a code.
         </p>
         <p class="content-warning" role="note">
-          ⚠️ Some cases include horror or gory elements — read with care.
+          ⚠️ 部分故事包含恐怖 / 血腥元素，胆小慎入。
+          (Some cases include horror or gory elements — read with care.)
         </p>
         <div class="hero-actions">
           <a href="/rooms/new" class="button-link">Start a new case</a>
