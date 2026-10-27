@@ -803,3 +803,159 @@ here since the brief asks for the steps to be written down:
    additive-only design above and the pre-existing non-destructive rename
    migrations) — restoring the backup is the belt-and-suspenders step for a
    migration that turns out not to be.
+
+## Phase 2: a live-sync bug report interrupted the Chinese/visual rework
+
+A new brief asked for two things at once, with the user explicitly
+prioritizing the second over the first: continue the tanghenre.com-inspired
+visual rework and translate every main user flow to Simplified Chinese, but
+first fix a concrete report that another browser creating a room needed a
+manual refresh to appear in the lobby, and a room's own state/transcript
+didn't update live either. Root-caused and fixed the live-sync report first,
+per this repo's "find the root cause before retrying" rule — it's a
+regression in the thing the brief is graded on (real-time), not a cosmetic
+gap, so it came before the visual/translation work rather than after.
+
+### Chinese translation, with a migration-safety catch
+[`fd32672`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-yanzzzzzzzz/commit/fd32672)
+rewrote the nine built-in puzzles' title/premise/solution natively in
+Chinese (not machine-translated from the English versions), plus the
+auto-generated labels that appear in every room regardless of puzzle content
+(`Anonymous Detective#N` → `匿名侦探#N`, `Unknown host` → `未知房主`,
+`Anonymous author` → `匿名作者`).
+
+The real risk, caught before shipping it: `seedMissingPuzzles()` reconciled
+official puzzles by exact `(title, premise, solution)` text equality (added
+in the prior session's migration-safety fix, [`7965107`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-yanzzzzzzzz/commit/7965107)).
+Rewriting that text in code would make every rewritten puzzle look like a
+*new* row on the next boot — not the data-loss bug `7965107` fixed, but a
+real content-drift bug: translating the seed data wouldn't update anything a
+real room already points at, since its `puzzle_id` would still reference the
+old English row sitting unchanged alongside a new Chinese duplicate. Fixed
+by giving each `SeedPuzzle` a stable `slug` or (`src/data/puzzles.ts`), and
+rewriting the reconciliation as `reconcileSeedPuzzles()`: matches existing
+rows by slug, UPDATEs in place rather than ever inserting a duplicate for an
+already-known puzzle, and backfills `slug` once for any pre-slug row by
+its known legacy English title. Verified directly, not just by reasoning
+about it: built a throwaway pre-slug fixture (the exact old schema, an
+English "The Elevator Routine" puzzle row, a real room pointing at its
+`puzzle_id`), booted it through the new code, and confirmed the row's `id`
+and the room's `puzzle_id` were both unchanged afterward while the puzzle's
+own text flipped to Chinese — no duplicate row, no orphaned room, official
+puzzle count stayed at 8.
+
+### Reproducing the live-sync report before touching any code
+
+The user's report named three symptoms (lobby needs a manual refresh; room
+state isn't live; can't see others' questions/answers) plus a prior
+read-only review's suspicions (no lobby snapshot/reconnect catch-up, no
+dedicated room-status broadcast, `pagehide` closes the stream but nothing
+reopens it on `pageshow`, a possible message-loss window around
+subscribe-vs-snapshot ordering). Treated the suspicions as hypotheses to
+verify, not a ready-made fix list — reproduced each claim first against a
+real, isolated local server (port 8081, its own throwaway SQLite file under
+`.data-test-8081/`, never the user's own port-8080 preview or its data)
+before writing any fix:
+
+- **Lobby race, confirmed real**: fetched `GET /`, created a room in a
+  *separate* session, then opened `/lobby/stream` — the new connection
+  received nothing. `/lobby/stream` only ever broadcast "here's the one
+  room that just changed," with nothing resent for anything missed; a room
+  created in the gap before a tab's `EventSource` finishes opening (real
+  network/JS-eval latency, or any reconnect after Fly's auto-stop/start
+  cycle drops the connection) was lost permanently, not just delayed.
+- **Room-status silence, confirmed real**: loaded the REAL rendered room
+  page and the REAL `public/client.js` into `jsdom` with a genuine
+  `EventSource` (Node 24's `--experimental-eventsource`, not a mock) for two
+  independent cookie sessions in the same room, had the host start the
+  case, and watched session B's page: no ask-form ever appeared without a
+  manual reload. `POST /rooms/:code/start` and `/transfer-host` only ever
+  redirected the requesting session; nothing was broadcast on the room's own
+  SSE channel for anyone else already watching.
+- **Question/answer delivery: NOT broken** — the same two-session `jsdom`
+  harness showed A's question reaching B's transcript and vice versa inside
+  ~1s, both directions. Recorded as "checked, found working" rather than
+  silently assumed, since the report bundled it with the two real bugs above.
+- **Ask-form swallows a rejection, confirmed real** (found while reading the
+  code, not from the report or the prior review): `public/client.js`'s
+  ask-form `fetch()` call follows the server's 303-on-rejection
+  (cooldown/not-started/author-guess) redirect transparently — `fetch`'s
+  default `redirect: "follow"` means `res.ok` is `true` either way.
+  Reproduced directly: posted two questions back-to-back (the second lands
+  inside the 5s cooldown) and confirmed the final response looks identical
+  to a success from the client's point of view, with the rejected question
+  silently absent from the transcript.
+- **`Last-Event-ID`/`Date.now()`-based presence/judging ids: checked and
+  ruled out.** The server only ever reads the `?after=` query param for
+  replay, never `Last-Event-ID`, so non-monotonic ids on those two event
+  types create no actual cursor-pollution risk today — recorded here so
+  it isn't silently "fixed" as churn on a non-issue, but also isn't lost as
+  an unexamined claim.
+
+### The fix
+[`20e5aba`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-yanzzzzzzzz/commit/20e5aba):
+
+- **`/lobby/stream` sends an authoritative snapshot on every connect.**
+  Instead of only pushing incremental "a room changed" events, the instant
+  any connection opens (first load, or any reconnect) it sends the full
+  current list as a `"snapshot"` event; `public/lobby.js` reconciles its
+  rendered list from that rather than trusting it already caught every
+  individual event since some earlier point in time. This is what actually
+  closes the race — no single missed event can leave the page stale forever,
+  because every (re)connection re-synchronizes from ground truth.
+- **A `"room-status"` broadcast on start and transfer-host**, plus a
+  `"lobby-update"` push of that room's lobby card (so a homepage viewer sees
+  the waiting → in-progress flip too, not just someone on the room page
+  itself). The client's handler reloads the page on receipt — the simplest
+  correct way to pick up the now-different waiting/active markup (the
+  ask-form's presence, the waiting notice, the host badge) without
+  duplicating every render branch into JS a second time.
+- **The ask-form reads the final response's own URL for a `?notice=`
+  param** (the same signal a full-page-reload submit would show via its
+  address bar) instead of trusting `res.ok`, and shows it in a new
+  `#ask-notice` element — deliberately *not* clearing the input on
+  rejection, since that's the one case where the player's typed text should
+  stay for a retry, not vanish.
+- Two smaller fixes found while in this code reading it, not from the
+  report: `/rooms/:code/stream` now calls `subscribe()` *before* reading the
+  transcript snapshot, not after — the old order had a real (if narrow) gap
+  where an entry inserted between the snapshot read and subscribing landed
+  in neither; the new order can at most double-deliver an entry inserted in
+  the now-much-smaller reversed window, which `client.js`'s existing `seen`
+  id-set already drops silently. And both `client.js` and `lobby.js` now
+  reconnect their `EventSource` on `pageshow` with `persisted: true` (a
+  back/forward-cache restore) — `pagehide` already closed it, but nothing
+  previously reopened it, so navigating back into a room or the lobby via
+  the browser's own back button silently left the page frozen.
+
+### Verifying it without a GUI browser
+No GUI browser is available in this environment (same constraint noted in
+Phase 1's theme-pass entry above). Used `jsdom` with Node 24's real
+`--experimental-eventsource` implementation instead of a mocked DOM or a
+reimplementation of the client logic — this loads and executes the actual
+shipped `public/client.js` / `public/lobby.js` against the real rendered
+HTML, so a JS error, a bad selector, or a script that silently never runs
+would have shown up as a test failure, not just a server-side SSE check
+(every `spec/*.test.ts` file before this session checked the server side of
+real-time by reading the raw SSE wire format; none loaded the actual
+client-side JS). `spec/live-sync.test.ts` encodes six of these checks as a
+permanent regression suite: lobby live-update, the lobby snapshot/race fix,
+a lobby card's live status flip, the room-status broadcast on start,
+cross-session question delivery, and the ask-notice rejection fix.
+`package.json`'s `test` script now sets `NODE_OPTIONS=--experimental-eventsource`
+so this runs the same way in CI's Docker-based `pnpm check` as it does
+locally, with no separate CI-only code path.
+
+Full suite after the fix: 35/35 passing, `pnpm typecheck` clean, against the
+isolated port-8081 server with its own throwaway database — confirmed via
+the same ad hoc repro scripts used to first reproduce each bug, kept under
+`.data-test-8081/` (matches `.gitignore`'s existing `.data*/` pattern, never
+committed) and deleted once their findings were captured here and in the
+permanent test file. The user's own port-8080 preview process and its
+database were never stopped, restarted, or touched.
+
+Not done in this pass, carried forward: the Simplified Chinese translation
+of UI chrome/navigation/forms (only the puzzle content and auto-labels were
+translated so far, as part of the migration-safety work above) and the
+visual "案件馆" (case-file) theme rework — resuming both now that the
+live-sync report is fixed and regression-tested.
