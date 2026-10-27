@@ -96,23 +96,38 @@ room flips to solved.
 A per-session cooldown throttles how fast one person can ask questions, and a
 10-second timeout guards every call: if Groq doesn't answer in time, the room
 gets a plain "The AI judge didn't respond in time, please try again shortly"
-message instead of hanging silently. `GROQ_API_KEY` is a Fly secret in production; with it unset — which
-is always true in CI, since the course's own LLM proxy key is
-network-restricted to ANU and unreachable from a Fly machine or a GitHub
-runner — the app falls back to a small deterministic mock judge. That keeps
-`pnpm check` fast, free, and not dependent on a third-party secret, without
-ever running in the deployed app.
+message instead of hanging silently.
+
+**`GROQ_API_KEY` is a Fly secret in production**, and the app only ever calls
+the real judge when it's set. A small deterministic mock judge exists for
+testing (keyword-matches the question against the solution's own words), but
+it's opt-in, not a silent default: it only runs when `ALLOW_MOCK_JUDGE=1` is
+also set, which `pnpm check`'s Docker run and local dev both set explicitly
+(`.github/workflows/checks.yml`, this section below). **If a deploy is
+missing `GROQ_API_KEY` and hasn't set `ALLOW_MOCK_JUDGE`, the judge is
+unavailable** — every question gets a plain "The AI judge isn't configured on
+this deploy" system message instead of a keyword-matching mock quietly
+pretending to be the real AI. That split exists specifically so a forgotten
+`GROQ_API_KEY` in production fails loudly and tells you to go set a secret,
+rather than serving a never-noticed fake judge indefinitely — which is
+exactly what shipped on this app's own Fly deploy for a stretch (see
+`PROCESS.md`).
 
 ## Running locally
 
 ```sh
 pnpm install
-DATA_DIR=./.data PORT=8080 node src/server.ts
+DATA_DIR=./.data PORT=8080 ALLOW_MOCK_JUDGE=1 node src/server.ts
 ```
 
 Set `GROQ_API_KEY` in the environment (or an untracked `.env`) to use the
-real judge instead of the mock one. `DATA_DIR` defaults to `/data`, which
-only exists inside the deployed container; point it somewhere writable for
+real judge instead of the mock one — when it's set, `ALLOW_MOCK_JUDGE` is
+ignored and the real judge always wins. Without a real key, set
+`ALLOW_MOCK_JUDGE=1` to get the deterministic mock for local testing;
+without either, every question will correctly show "AI judge isn't
+configured," matching what an unconfigured production deploy would show.
+`DATA_DIR` defaults to `/data`, which only exists inside the deployed
+container; point it somewhere writable for
 local runs.
 
 ## What's deliberately out of scope

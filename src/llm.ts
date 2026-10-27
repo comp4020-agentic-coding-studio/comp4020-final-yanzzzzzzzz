@@ -120,10 +120,31 @@ async function judgeWithGroq(
   }
 }
 
-// Used only when GROQ_API_KEY is unset — always true in CI, since the
-// course's LLM proxy key is ANU-network-restricted and can't be reached from
-// a Fly machine or a GitHub runner. Keeps `pnpm check` deterministic and free
-// of a third-party secret; production always has a real key.
+// The mock judge below is deliberately NOT the default fallback for a
+// missing GROQ_API_KEY — it only runs when ALLOW_MOCK_JUDGE is explicitly
+// set, which CI and local test runs do (see .github/workflows/checks.yml
+// and README.md's "Running locally"). A production deploy that forgot to
+// set GROQ_API_KEY must not silently start answering every question with
+// "mock judge: keyword match" and look like a working AI judge — judge()
+// returns undefined in that case instead, same shape as a real judge
+// timeout, and the caller shows a plain "AI judge unavailable" state
+// (src/routes/rooms.ts's "ai-unavailable" notice) rather than ever
+// fabricating a verdict nobody asked for.
+function mockJudgeAllowed(): boolean {
+  return process.env.ALLOW_MOCK_JUDGE === "1";
+}
+
+// Whether the live judge this process would call right now is the real
+// Groq-backed one, the deterministic mock (only when explicitly allowed),
+// or neither — read fresh each call, not cached, so a key added or removed
+// via `flyctl secrets set` (which restarts the machine) is reflected
+// immediately rather than from a stale boot-time snapshot.
+export function judgeAvailability(): "real" | "mock" | "unavailable" {
+  if (process.env.GROQ_API_KEY) return "real";
+  if (mockJudgeAllowed()) return "mock";
+  return "unavailable";
+}
+
 function judgeWithMock(puzzle: Puzzle, question: string, kind: "question" | "guess"): Verdict {
   const q = question.toLowerCase();
   const solutionWords = puzzle.solution
@@ -147,10 +168,11 @@ export async function judge(
   question: string,
   kind: "question" | "guess" = "question",
 ): Promise<Verdict | undefined> {
-  const apiKey = process.env.GROQ_API_KEY;
-  if (!apiKey) return judgeWithMock(puzzle, question, kind);
+  const availability = judgeAvailability();
+  if (availability === "unavailable") return undefined;
+  if (availability === "mock") return judgeWithMock(puzzle, question, kind);
   try {
-    return await judgeWithGroq(apiKey, puzzle, history, question, kind);
+    return await judgeWithGroq(process.env.GROQ_API_KEY as string, puzzle, history, question, kind);
   } catch {
     // caller inserts a system "AI didn't respond" entry instead of failing silently
     return undefined;

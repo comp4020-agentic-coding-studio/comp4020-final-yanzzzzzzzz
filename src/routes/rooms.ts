@@ -21,7 +21,7 @@ import {
   startRoom,
   transferHost,
 } from "../db.ts";
-import { judge } from "../llm.ts";
+import { judge, judgeAvailability } from "../llm.ts";
 import { broadcast, connectionCount, listMembers, subscribe } from "../sse.ts";
 import { getOrCreateSessionId } from "../session.ts";
 import { roomPage } from "../render/room.ts";
@@ -211,6 +211,24 @@ rooms.post("/rooms/:code/ask", async (c) => {
   // the judge call can take up to TIMEOUT_MS, and a silent few seconds reads
   // as a dead connection rather than a slow one.
   broadcast(room.id, Date.now(), { label, kind }, "judging");
+
+  // Checked before calling judge(), not inferred from its return value: a
+  // misconfigured deploy (no GROQ_API_KEY, mock not explicitly allowed) is a
+  // standing, operator-fixable condition, not the same thing as a single
+  // slow/failed Groq call — the two need different wording so "the judge
+  // timed out, try again" isn't shown for a problem retrying can't fix.
+  if (judgeAvailability() === "unavailable") {
+    const entry = insertEntry({
+      roomId: room.id,
+      sessionId,
+      kind: "system",
+      body: "The AI judge isn't configured on this deploy (no GROQ_API_KEY) — this case can't be judged right now. See README.md's \"Running locally\" / ops notes.",
+      verdict: null,
+      label: null,
+    });
+    broadcast(room.id, entry.id, entry);
+    return c.redirect(`/rooms/${room.code}`, 303);
+  }
 
   const history = getTranscript(room.id);
   const verdict = await judge(puzzle, history, question, kind);

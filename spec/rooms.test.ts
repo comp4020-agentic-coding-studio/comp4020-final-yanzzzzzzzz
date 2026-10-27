@@ -4,10 +4,13 @@ import { SEED_PUZZLES } from "../src/data/puzzles.ts";
 // CI never sets GROQ_API_KEY (the course's own LLM proxy key is
 // ANU-network-restricted and unreachable from a Fly machine or a GitHub
 // runner — see PROCESS.md), so src/llm.ts always falls back to its
-// deterministic mock judge here. These checks exercise the app's own
-// plumbing (room creation, multi-user distinction, the live transcript),
-// not the real AI's judgement — that's a person's call at a crit, not a
-// spec's.
+// deterministic mock judge here — CI explicitly opts into that fallback via
+// ALLOW_MOCK_JUDGE=1 (.github/workflows/checks.yml), since a real deploy
+// with neither a key nor that flag set gets "AI judge isn't configured"
+// instead of a silent mock (see spec/llm-availability.test.ts). These
+// checks exercise the app's own plumbing (room creation, multi-user
+// distinction, the live transcript), not the real AI's judgement — that's a
+// person's call at a crit, not a spec's.
 const baseUrl = inject("baseUrl");
 
 function parseCookie(setCookieHeaders: string[]): string {
