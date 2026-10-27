@@ -21,6 +21,7 @@ db.exec(`
     solution TEXT NOT NULL,
     author_session_id TEXT REFERENCES sessions(id),
     shared INTEGER NOT NULL DEFAULT 1,
+    slug TEXT,
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
   );
 
@@ -98,6 +99,7 @@ ensureColumn(
   "ALTER TABLE puzzles ADD COLUMN author_session_id TEXT REFERENCES sessions(id)",
 );
 ensureColumn("puzzles", "shared", "ALTER TABLE puzzles ADD COLUMN shared INTEGER NOT NULL DEFAULT 1");
+ensureColumn("puzzles", "slug", "ALTER TABLE puzzles ADD COLUMN slug TEXT");
 
 // ensureColumn can add new columns, but SQLite can't ALTER a CHECK
 // constraint in place — rooms.status predates the 'waiting' value a host-
@@ -194,42 +196,79 @@ function ensureRoomsHaveWaitingStatus(): void {
 }
 ensureRoomsHaveWaitingStatus();
 
-// Inserts whatever SEED_PUZZLES entries aren't already present among the
-// OFFICIAL puzzles (author_session_id IS NULL — never touches a
-// player-authored one, matched or not), and never deletes a row. This used
-// to reconcile by wiping qa_entries/room_participants/rooms/puzzles
-// entirely whenever the live table didn't exactly equal SEED_PUZZLES by
-// set-equality — which doesn't just mean "a seed puzzle's text changed," it
-// also means "a player authored a new puzzle," since that changes the
-// table's total row set too. That made every boot of a database holding
-// even one authored puzzle wipe every real room, participant, transcript
-// entry, and puzzle in the whole app — confirmed by migrating a fixture
-// database seeded with real rooms/participants/transcript entries through
-// this exact code path and watching it come back empty. A purely additive
-// reconciliation can't do that: adding a new seed puzzle, or editing one's
-// text in code, only ever inserts a new row here, and an old edition of an
-// edited puzzle is left in place rather than deleted, since deleting it
-// could orphan a room's `puzzle_id` foreign key if any room still points at
-// it — leaving a harmless unreferenced extra row is strictly safer than
-// either a dangling FK or a blanket wipe.
-function seedMissingPuzzles(): void {
-  const existingOfficial = db
-    .prepare("SELECT title, premise, solution FROM puzzles WHERE author_session_id IS NULL")
-    .all() as { title: string; premise: string; solution: string }[];
-  const present = new Set(
-    existingOfficial.map((r) => `${r.title}\u0000${r.premise}\u0000${r.solution}`),
-  );
+// Pre-translation official titles, in SEED_PUZZLES order, from the original
+// English build. Only used once, to backfill `slug` onto rows that predate
+// the slug column entirely — see reconcileSeedPuzzles() below.
+const LEGACY_ENGLISH_TITLES = [
+  "A Bowl of Turtle Soup",
+  "The Silent Phone Call",
+  "The Elevator Routine",
+  "The Desert Parachute",
+  "The Avoided Gas Station",
+  "The Discarded Shoes",
+  "The Man and the Straw",
+  "The Dinner Party Soup",
+];
+
+// Reconciles the OFFICIAL puzzle rows (author_session_id IS NULL — never
+// touches a player-authored one) against SEED_PUZZLES by `slug`, a stable id
+// that doesn't change when a title/premise/solution is edited or translated.
+// Never deletes a row, so a room's `puzzle_id` foreign key can never dangle:
+//
+//  - a slug already present on a row gets that row's title/premise/solution
+//    UPDATEd in place to match the code — this is what lets "rewrite case
+//    #3 in Chinese" update the content every room pointing at that puzzle_id
+//    already sees, rather than silently creating a duplicate row;
+//  - a slug with no matching row (a brand new SEED_PUZZLES entry, or the very
+//    first boot of a fresh database) gets INSERTed;
+//  - a pre-slug row (every /data volume from before this column existed, a
+//    full legacy English title/premise/solution with slug IS NULL) is
+//    matched once by its known legacy English title and has its slug
+//    backfilled, THEN the same in-place UPDATE above brings its text to the
+//    current (Chinese) SEED_PUZZLES content — so an existing volume's rooms
+//    keep their puzzle_id and gain the new content, not a second puzzle.
+//
+// This used to reconcile by wiping qa_entries/room_participants/rooms/
+// puzzles entirely whenever the live table didn't exactly equal SEED_PUZZLES
+// by set-equality (see PROCESS.md for the real data-loss bug that caused,
+// and spec/migration.test.ts for the regression test) — a purely additive/
+// in-place-update reconciliation, keyed by slug rather than by exact text
+// equality, can't repeat either failure mode: editing or translating an
+// entry's text no longer looks like "a different puzzle" at all.
+function reconcileSeedPuzzles(): void {
+  const legacyRows = db
+    .prepare("SELECT id, title FROM puzzles WHERE author_session_id IS NULL AND slug IS NULL")
+    .all() as { id: string; title: string }[];
+  const legacyTitleToId = new Map(legacyRows.map((r) => [r.title, r.id]));
 
   const insert = db.prepare(
-    "INSERT INTO puzzles (id, title, premise, solution) VALUES (?, ?, ?, ?)",
+    "INSERT INTO puzzles (id, slug, title, premise, solution) VALUES (?, ?, ?, ?, ?)",
   );
-  for (const puzzle of SEED_PUZZLES) {
-    const key = `${puzzle.title}\u0000${puzzle.premise}\u0000${puzzle.solution}`;
-    if (present.has(key)) continue;
-    insert.run(randomUUID(), puzzle.title, puzzle.premise, puzzle.solution);
-  }
+  const updateBySlug = db.prepare(
+    "UPDATE puzzles SET title = ?, premise = ?, solution = ? WHERE slug = ? AND author_session_id IS NULL",
+  );
+  const backfillSlug = db.prepare("UPDATE puzzles SET slug = ? WHERE id = ?");
+
+  SEED_PUZZLES.forEach((puzzle, i) => {
+    const existingBySlug = db
+      .prepare("SELECT 1 FROM puzzles WHERE slug = ? AND author_session_id IS NULL")
+      .get(puzzle.slug);
+    if (existingBySlug) {
+      updateBySlug.run(puzzle.title, puzzle.premise, puzzle.solution, puzzle.slug);
+      return;
+    }
+
+    const legacyId = legacyTitleToId.get(LEGACY_ENGLISH_TITLES[i] ?? "");
+    if (legacyId) {
+      backfillSlug.run(puzzle.slug, legacyId);
+      updateBySlug.run(puzzle.title, puzzle.premise, puzzle.solution, puzzle.slug);
+      return;
+    }
+
+    insert.run(randomUUID(), puzzle.slug, puzzle.title, puzzle.premise, puzzle.solution);
+  });
 }
-seedMissingPuzzles();
+reconcileSeedPuzzles();
 
 export interface Puzzle {
   id: string;
@@ -352,7 +391,7 @@ export function listAvailablePuzzles(): {
     premise: r.premise,
     usageCount: r.usageCount,
     authorLabel: r.authorSessionId
-      ? (getProfile(r.authorSessionId).nickname ?? "Anonymous author")
+      ? (getProfile(r.authorSessionId).nickname ?? "匿名作者")
       : null,
   }));
 }
@@ -361,9 +400,9 @@ export function listAvailablePuzzles(): {
 // (for a lobby card) shouldn't register that session as a room participant
 // the way actually joining one does.
 export function hostLabel(sessionId: string | null): string {
-  if (!sessionId) return "Unknown host";
+  if (!sessionId) return "未知房主";
   const profile = getProfile(sessionId);
-  if (!profile.nickname) return "Anonymous host";
+  if (!profile.nickname) return "匿名房主";
   return profile.avatar ? `${profile.avatar} ${profile.nickname}` : profile.nickname;
 }
 
@@ -419,6 +458,21 @@ export function listActiveRooms(limit = 20): LobbyRoom[] {
     .all(limit) as unknown as LobbyRoom[];
 }
 
+// A single room's lobby-card row, same shape and joins as listActiveRooms()
+// — used to push a live upsert for one room (on start/transfer-host/solve)
+// without re-querying or re-sending the whole lobby list. Returns undefined
+// for a solved/missing room, which the caller treats as "remove this card."
+export function getLobbyCard(roomId: string): LobbyRoom | undefined {
+  return db
+    .prepare(
+      `SELECT r.id, r.code, r.name, p.title, r.host_session_id, r.status
+       FROM rooms r
+       JOIN puzzles p ON p.id = r.puzzle_id
+       WHERE r.id = ? AND r.status IN ('waiting', 'active')`,
+    )
+    .get(roomId) as LobbyRoom | undefined;
+}
+
 export function getRoomByCode(code: string): Room | undefined {
   return db
     .prepare(`SELECT ${ROOM_COLUMNS} FROM rooms WHERE code = ?`)
@@ -465,7 +519,7 @@ export function ensureParticipantLabel(roomId: string, sessionId: string): strin
   const { count } = db
     .prepare("SELECT COUNT(*) AS count FROM room_participants WHERE room_id = ?")
     .get(roomId) as { count: number };
-  const label = `Anonymous Detective#${count + 1}`;
+  const label = `匿名侦探#${count + 1}`;
   db.prepare(
     "INSERT INTO room_participants (room_id, session_id, label) VALUES (?, ?, ?)",
   ).run(roomId, sessionId, label);

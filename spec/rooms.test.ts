@@ -64,11 +64,11 @@ it("distinguishes multiple anonymous sessions in the same room", async () => {
   const { code } = await createRoom();
 
   const { cookie: cookieA, html: htmlA } = await visitRoom(code);
-  expect(htmlA).toContain("Anonymous Detective#1");
+  expect(htmlA).toContain("匿名侦探#1");
 
   // A request with no cookie at all is a second, distinct anonymous session.
   const { cookie: cookieB, html: htmlB } = await visitRoom(code);
-  expect(htmlB).toContain("Anonymous Detective#2");
+  expect(htmlB).toContain("匿名侦探#2");
 
   expect(cookieA).not.toBe(cookieB);
 });
@@ -180,7 +180,12 @@ it("shows a solve recap with stats once a guess is correct", async () => {
     redirect: "manual",
   });
 
-  const word = puzzle.solution.match(/[A-Za-z]{4,}/)?.[0];
+  // Solutions are Chinese text (src/data/puzzles.ts) — the mock judge's
+  // keyword match (src/llm.ts's judgeWithMock) splits on any run of
+  // Unicode letters/digits, which for CJK text means individual
+  // characters, not space-separated words. A 2-character run is enough to
+  // be a specific, not-generic keyword.
+  const word = puzzle.solution.match(/[\p{L}\p{N}]{2,}/u)?.[0];
   if (!word) throw new Error("no usable keyword in this puzzle's solution");
 
   await fetch(new URL(`/rooms/${code}/ask`, baseUrl), {

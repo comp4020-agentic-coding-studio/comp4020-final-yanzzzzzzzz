@@ -34,7 +34,7 @@ it("a chosen nickname and avatar replace the auto-label in a new room, and persi
 
   const roomHtml = await (await fetch(new URL(`/rooms/${code}`, baseUrl), { headers: { cookie } })).text();
   expect(roomHtml).toContain("🐢 Riko");
-  expect(roomHtml).not.toContain("Anonymous Detective#1");
+  expect(roomHtml).not.toContain("匿名侦探#1");
 });
 
 it("rejects an avatar outside the fixed set rather than storing arbitrary text", async () => {
