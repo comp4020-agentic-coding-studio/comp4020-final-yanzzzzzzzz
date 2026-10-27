@@ -104,6 +104,50 @@
   // a delay.
   window.addEventListener("pagehide", () => source.close());
 
+  // Reasoning-time heartbeat: only while this tab is the visible one and the
+  // room is actually active (not waiting, not solved) — a heartbeat is a
+  // claim "a person could plausibly be reading/thinking here right now,"
+  // which a hidden tab or a case nobody's started can't make. The server is
+  // the one deciding how much time a heartbeat is worth (src/db.ts's
+  // recordHeartbeat): this only decides whether to call at all.
+  (() => {
+    if (section.dataset.roomStatus !== "active") return;
+    const HEARTBEAT_MS = 20_000;
+    let timer = null;
+
+    function send(resume) {
+      const body = resume ? new URLSearchParams({ resume: "1" }) : undefined;
+      fetch(`/rooms/${roomCode}/heartbeat`, {
+        method: "POST",
+        headers: body ? { "Content-Type": "application/x-www-form-urlencoded" } : undefined,
+        body,
+        keepalive: true,
+      }).catch(() => {
+        // a missed beat just means this stretch isn't credited — nothing to
+        // recover, the next successful beat picks up from wherever it lands
+      });
+    }
+
+    function start() {
+      if (timer) return;
+      send(true); // a fresh baseline, not a claim about time already spent
+      timer = setInterval(() => send(false), HEARTBEAT_MS);
+    }
+
+    function stop() {
+      if (!timer) return;
+      clearInterval(timer);
+      timer = null;
+    }
+
+    if (document.visibilityState === "visible") start();
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "visible") start();
+      else stop();
+    });
+    window.addEventListener("pagehide", stop);
+  })();
+
   const form = document.getElementById("ask-form");
   if (!form) return;
   const input = form.querySelector("#question");

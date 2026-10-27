@@ -6,7 +6,13 @@ import { readmeRoute } from "./routes/readme.ts";
 import { rooms } from "./routes/rooms.ts";
 import { lobby } from "./routes/lobby.ts";
 import { profileRoute } from "./routes/profile.ts";
-import { getProfile, hostLabel, listActiveRooms } from "./db.ts"; // also runs migrations + seeds the puzzle bank on boot
+import {
+  getProfile,
+  hostLabel,
+  listActiveRooms,
+  listAvailablePuzzles,
+  totalReasoningSeconds,
+} from "./db.ts"; // also runs migrations + seeds the puzzle bank on boot
 import { getOrCreateSessionId } from "./session.ts";
 import { connectionCount } from "./sse.ts";
 
@@ -21,7 +27,12 @@ app.get("/", (c) => {
     players: connectionCount(r.id),
     hostLabel: hostLabel(r.host_session_id),
   }));
-  return c.html(homePage({ rooms, profile }));
+  const featuredPuzzles = listAvailablePuzzles()
+    .slice(0, 3)
+    .map((p) => ({ id: p.id, title: p.title, premise: p.premise }));
+  return c.html(
+    homePage({ rooms, profile, reasoningSeconds: totalReasoningSeconds(), featuredPuzzles }),
+  );
 });
 app.use("/*", serveStatic({ root: "./public" }));
 app.route("/", readmeRoute);

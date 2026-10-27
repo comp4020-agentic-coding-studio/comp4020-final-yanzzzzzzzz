@@ -17,6 +17,7 @@ import {
   listAvailablePuzzles,
   markSolved,
   pickRandomPuzzle,
+  recordHeartbeat,
   startRoom,
   transferHost,
 } from "../db.ts";
@@ -254,6 +255,39 @@ rooms.post("/rooms/:code/ask", async (c) => {
   }
 
   return c.redirect(`/rooms/${room.code}`, 303);
+});
+
+// True unless a request plainly came from elsewhere — a cross-origin
+// `fetch` carries `sec-fetch-site: cross-site` (or `same-site`, never
+// `same-origin`) in every browser that implements Fetch Metadata, and an
+// explicit `Origin` header, when a request bothers to send one, has to
+// match this app's own. Both headers are easy for a non-browser client to
+// spoof, so this is on top of — not instead of — the session cookie's own
+// `SameSite=Lax`, which already stops a browser from attaching it to a
+// cross-site POST in the first place; this just gives the heartbeat
+// endpoint (unlike every existing POST here, it's fired automatically and
+// repeatedly, not once per deliberate form submit) a second, independent
+// reason to reject a forged call rather than silently crediting time no
+// session actually spent reasoning.
+function isSameOrigin(c: { req: { header: (name: string) => string | undefined; url: string } }): boolean {
+  const fetchSite = c.req.header("sec-fetch-site");
+  if (fetchSite && fetchSite !== "same-origin") return false;
+  const origin = c.req.header("origin");
+  if (origin && origin !== new URL(c.req.url).origin) return false;
+  return true;
+}
+
+rooms.post("/rooms/:code/heartbeat", async (c) => {
+  if (!isSameOrigin(c)) return c.body(null, 403);
+  const room = getRoomByCode(c.req.param("code"));
+  if (!room) return c.body(null, 404);
+
+  const sessionId = getOrCreateSessionId(c);
+  const body = await c.req.parseBody();
+  const resume = body.resume === "1";
+  const result = recordHeartbeat(room.id, sessionId, { resume });
+  if (!result.ok) return c.body(null, 403);
+  return c.json({ credited: result.credited });
 });
 
 rooms.get("/rooms/:code/stream", (c) => {

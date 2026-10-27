@@ -142,7 +142,7 @@ export function roomPage(args: {
   return layout(
     `${room.name ?? `Case ${room.code}`} · Turtle Soup Puzzle Room`,
     `
-    <section class="room" data-room-code="${room.code}" data-last-id="${transcript.at(-1)?.id ?? 0}" data-solved="${solved}" data-host-session-id="${escapeHtml(room.host_session_id ?? "")}" data-viewer-session-id="${escapeHtml(viewerSessionId)}" data-is-host="${isHost}">
+    <section class="room" data-room-code="${room.code}" data-room-status="${room.status}" data-last-id="${transcript.at(-1)?.id ?? 0}" data-solved="${solved}" data-host-session-id="${escapeHtml(room.host_session_id ?? "")}" data-viewer-session-id="${escapeHtml(viewerSessionId)}" data-is-host="${isHost}">
       <div class="room-main">
         <h1>${heading}</h1>
         <p class="room-subtitle">

@@ -2,6 +2,10 @@ node_modules/
 dist/
 *.log
 
+# local throwaway data dirs for manual testing against DATA_DIR=./something
+.data-test/
+.data*/
+
 # editor and OS junk
 .DS_Store
 ._*

@@ -59,6 +59,24 @@ db.exec(`
   );
 
   CREATE INDEX IF NOT EXISTS qa_entries_room ON qa_entries(room_id, id);
+
+  -- Site-wide counters. A key/value table rather than dedicated columns:
+  -- the only two keys today are a running total and an immutable "when did
+  -- counting start" marker, and a new counter later is one more row, not a
+  -- schema change.
+  CREATE TABLE IF NOT EXISTS stats (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+  );
+
+  -- One row per session, never per room: the thing being deduplicated is a
+  -- single person's wall-clock time, and a person is a session, not a
+  -- (session, room) pair. See recordHeartbeat() for why this is enough to
+  -- dedupe overlapping tabs/rooms for the same session without a join.
+  CREATE TABLE IF NOT EXISTS session_activity (
+    session_id TEXT PRIMARY KEY REFERENCES sessions(id),
+    last_heartbeat_at TEXT NOT NULL
+  );
 `);
 
 // Adds a column only if a prior boot (an older image, or /data carried over
@@ -544,6 +562,119 @@ export function insertEntry(entry: {
 
 export function markSolved(roomId: string): void {
   db.prepare("UPDATE rooms SET status = 'solved' WHERE id = ?").run(roomId);
+}
+
+const REASONING_TOTAL_KEY = "reasoning_total_seconds";
+const REASONING_STARTED_KEY = "reasoning_tracking_started_at";
+
+// Both rows are created the first time this code runs against a database,
+// whichever boot that is — never overwritten afterward (INSERT OR IGNORE),
+// so the start marker stays the moment counting actually began, not a value
+// backfilled later from room-creation timestamps that predate this feature.
+db.exec(
+  `INSERT OR IGNORE INTO stats (key, value) VALUES ('${REASONING_TOTAL_KEY}', '0')`,
+);
+db.exec(
+  `INSERT OR IGNORE INTO stats (key, value) VALUES ('${REASONING_STARTED_KEY}', (SELECT datetime('now')))`,
+);
+
+export function totalReasoningSeconds(): number {
+  const row = db.prepare("SELECT value FROM stats WHERE key = ?").get(REASONING_TOTAL_KEY) as
+    | { value: string }
+    | undefined;
+  return row ? Number(row.value) : 0;
+}
+
+export function reasoningTrackingStartedAt(): string {
+  const row = db.prepare("SELECT value FROM stats WHERE key = ?").get(REASONING_STARTED_KEY) as
+    | { value: string }
+    | undefined;
+  return row?.value ?? "";
+}
+
+// A heartbeat only ever credits the gap since this SESSION's (not this
+// room's, not this tab's) last recorded moment, wherever that moment came
+// from. Keying the cursor by session_id alone — one row total, no matter how
+// many tabs or rooms a person has open — is what dedupes overlapping real
+// time across them for free: two tabs pinging the same session just both
+// advance the same cursor, so the same stretch of wall-clock time can never
+// be credited twice. A missed stretch (background tab, dropped connection, a
+// restart) simply isn't there to extend the cursor through, so it's never
+// retroactively credited either.
+const HEARTBEAT_IDLE_LIMIT_MS = 5 * 60 * 1000;
+const HEARTBEAT_MIN_GAP_MS = 3_000;
+
+export interface HeartbeatResult {
+  ok: boolean;
+  reason?: "not-participant" | "not-active";
+  credited: boolean;
+}
+
+// `resume` is an event the client asserts (a tab just became visible, or
+// just loaded), never a duration — the server's own clock still decides how
+// much time that implies, which is "none, this call only sets a fresh
+// baseline." Trusting a client's "I just came back to foreground" signal
+// can only ever cost it credit it would otherwise have gotten, never grant
+// extra, so there's nothing to gain by lying about it.
+export function recordHeartbeat(
+  roomId: string,
+  sessionId: string,
+  opts: { resume?: boolean } = {},
+): HeartbeatResult {
+  if (!isParticipant(roomId, sessionId)) {
+    return { ok: false, reason: "not-participant", credited: false };
+  }
+  const room = db.prepare("SELECT status FROM rooms WHERE id = ?").get(roomId) as
+    | { status: string }
+    | undefined;
+  if (!room || room.status !== "active") {
+    return { ok: false, reason: "not-active", credited: false };
+  }
+
+  const now = Date.now();
+  const nowIso = new Date(now).toISOString();
+  const existing = db
+    .prepare("SELECT last_heartbeat_at FROM session_activity WHERE session_id = ?")
+    .get(sessionId) as { last_heartbeat_at: string } | undefined;
+
+  if (!existing) {
+    db.prepare(
+      "INSERT INTO session_activity (session_id, last_heartbeat_at) VALUES (?, ?)",
+    ).run(sessionId, nowIso);
+    return { ok: true, credited: false };
+  }
+
+  const elapsedMs = now - Date.parse(existing.last_heartbeat_at);
+
+  if (!opts.resume && elapsedMs < HEARTBEAT_MIN_GAP_MS) {
+    // A near-duplicate call (retry, double-fired timer) carries too little
+    // new wall-clock time to matter — skip the write rather than churn the
+    // database for noise.
+    return { ok: true, credited: false };
+  }
+
+  db.prepare("UPDATE session_activity SET last_heartbeat_at = ? WHERE session_id = ?").run(
+    nowIso,
+    sessionId,
+  );
+
+  if (opts.resume || elapsedMs >= HEARTBEAT_IDLE_LIMIT_MS) {
+    // Either the client just told us this is a fresh foreground start (so
+    // whatever came before it is deliberately not this call's to credit), or
+    // the gap is long enough that it can only be a background tab, a
+    // dropped connection, or a sleeping machine — either way, nothing earns
+    // credit, the cursor just moves to now.
+    return { ok: true, credited: false };
+  }
+
+  const seconds = Math.round(elapsedMs / 1000);
+  if (seconds > 0) {
+    db.prepare(`UPDATE stats SET value = CAST(value AS INTEGER) + ? WHERE key = ?`).run(
+      seconds,
+      REASONING_TOTAL_KEY,
+    );
+  }
+  return { ok: true, credited: seconds > 0 };
 }
 
 export function lastQuestionAt(roomId: string, sessionId: string): string | undefined {
