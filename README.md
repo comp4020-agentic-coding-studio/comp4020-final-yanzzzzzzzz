@@ -17,10 +17,26 @@ themselves — a title, a premise, and a solution, optionally shared to a
 public library so other players can pick it too. The homepage doubles as a
 lobby: every currently open case is shown as a card (room name, which
 puzzle it's playing, its host, its code, whether it's started yet, and how
-many people are in it), and a new case appears live on everyone else's
-homepage the moment someone starts one — nobody has to already have the
-room's link to end up playing together, and anyone with just the code can
-type it into the lobby's "Have a code?" box instead.
+many people are in it, deduplicated by anonymous session so two tabs on the
+same room never count as two people), and a new case appears live on
+everyone else's homepage the moment someone starts one — nobody has to
+already have the room's link to end up playing together, and anyone with
+just the code can type it into the lobby's "Have a code?" box instead. A
+room code is always shown with a one-click copy button, alongside a copy
+button for the room's full link, both with visible success/failure
+feedback.
+
+There's no fixed limit on how many questions a room can ask, and every case
+has exactly one solution the judge is holding from the start — a guess is
+judged against that solution, never against vibes or a hint budget.
+
+**Content note:** some cases include horror or gory elements (部分故事包含恐怖
+/ 血腥元素，胆小慎入) — read with care.
+
+The homepage also shows a running total of real reasoning time spent across
+every room on the site, counted since that feature shipped (not backfilled
+from room-creation timestamps, and not borrowed from any other site's
+number) — see "Reasoning time" below for exactly what counts.
 
 ## Why this shape
 
@@ -82,6 +98,32 @@ works end to end with JavaScript turned off (plain `<form>` posts, full-page
 reloads); the JS only adds live updates and skips the reload on submit when
 it's available. Deliberate scope control: one idea built all the way, not a
 feature list spread thin.
+
+## Reasoning time
+
+The homepage shows a running total of real wall-clock time spent reasoning
+across every active room on the site. It's the sum of each session's own
+effective participation time, deduplicated so a person is never double
+counted: three people each playing for 10 minutes shows 30 minutes total, and
+the same person's two open tabs on one room (or two rooms at once) only ever
+counts their own overlapping real time once.
+
+What counts: a room that's actually `active` (not `waiting` for the host to
+start, not already `solved`), with the tab visibly in the foreground —
+reading the premise or the live transcript counts as participation, not just
+typing. What doesn't count: a `waiting` or `solved` room, a backgrounded or
+hidden tab, a dropped connection, a Fly machine asleep between visits, or any
+single gap of 5 or more minutes without activity (counted as idle, not
+retroactively credited once activity resumes).
+
+The number is server-computed from the server's own clock on every
+heartbeat, not a client-reported duration — the client can only say "I just
+came back to the foreground," which resets the baseline and can never
+manufacture extra credit. It doesn't prove anyone was actually thinking hard;
+it's an honest measure of time spent with the room visibly open and
+interacted with, nothing more. Counting started the moment this feature
+shipped — there's no backfilled history from room-creation timestamps, and
+no number borrowed from anywhere else.
 
 ## The AI judge
 

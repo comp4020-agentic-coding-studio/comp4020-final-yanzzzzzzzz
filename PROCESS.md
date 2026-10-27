@@ -622,3 +622,184 @@ actual quality at the crit.
 
 A manual keyboard-only / throttled-network pass in a real browser (this
 environment has no GUI browser available) is still open as well.
+
+## Phase 1 of the tanghenre.com-inspired refresh
+
+A new brief asked for several things at once, scoped so the core idea (a
+multiplayer, AI-judged 海龟汤 room) stays the thing being improved, not
+diluted: an original-art homepage rebuild in the spirit of tanghenre.com
+(paper/mystery feel, clear play-in-three-steps, case library preview) without
+copying its imagery, brand, or bulk puzzle content; a real cumulative
+"reasoning time" stat; non-destructive SQLite migration guarantees; lobby and
+room UX fixes; and fixing the open `GROQ_API_KEY` item properly instead of
+just restating it as still-open. Built and committed as five independent,
+individually-tested changes rather than one large one, per this repo's own
+git-discipline rule.
+
+### Homepage rebuild
+[`116fc38`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-yanzzzzzzzz/commit/116fc38)
+replaced the old two-line hero with: an original inline-SVG illustration
+(a bowl, rising steam, a question mark, a magnifying glass — hand-drawn
+`<path>`/`<circle>` shapes, not traced or downloaded art) sized and colored
+from the site's own `--accent`/`--fg` variables so it repaints correctly in
+dark mode for free; a three-step "how it plays" explainer; an FAQ answering
+the two questions a design brief specifically warned against mis-answering
+(there IS a single solution, there is NO fixed question limit — both
+correct in the FAQ's own wording); a "from the case library" preview drawn
+from `listAvailablePuzzles()` (same function the room-creation picker uses,
+so it can't leak a solution — it never selects that column); and the
+required content warning, in the brief's own Chinese wording plus an English
+gloss ([`ae53b82`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-yanzzzzzzzz/commit/ae53b82)
+fixed a first pass that had paraphrased it in English only).
+
+### Reasoning-time accounting
+Also in `116fc38`. The brief's hardest constraint: real time, counted from
+zero as of this feature (no backfilled history, no borrowed reference-site
+number), deduped per anonymous session across tabs/rooms, server-trusted
+rather than client-reported, and immune to idle/background/restart padding.
+
+Design, each point verified against a live local server, not just reasoned
+about:
+- **Unit of dedup is a session, not a (session, room) pair.** One
+  `session_activity` row per `session_id` (src/db.ts) means a heartbeat from
+  ANY tab or room for the same session advances the same cursor. Verified:
+  two simultaneous rooms under one session, 3-4s of real elapsed time
+  between them, credited the gap exactly once — not twice.
+- **The server's clock decides value, not the client.** A heartbeat POST
+  carries only an optional `resume: 1` flag (asserting "I just came to
+  foreground," which can only cost credit by resetting the baseline, never
+  manufacture extra) — never a duration. `recordHeartbeat()` computes
+  elapsed time from `Date.now()` minus the stored cursor.
+- **Idle/background/restart never retroactively credited.** A gap >= 5
+  minutes moves the cursor to now without crediting anything — verified by
+  backdating a session's cursor by 10 simulated minutes and confirming the
+  total stayed at 0, then confirming a subsequent real 4s gap credited
+  correctly.
+- **Only credits while a room is `active`.** Checked against both `rooms`
+  and `room_participants` server-side on every call — verified a
+  non-participant and a `waiting`-status room both get 403, not silent
+  non-credit.
+- **A lightweight same-origin check** (`sec-fetch-site` / `Origin`,
+  `isSameOrigin()` in `src/routes/rooms.ts`) rejects a forged cross-site
+  heartbeat, layered on top of the existing `SameSite=Lax` session cookie —
+  this is the first endpoint fired automatically and repeatedly rather than
+  once per deliberate form submit, so it gets an extra check the other POST
+  routes don't need.
+
+`spec/reasoning-time.test.ts` exercises all of this with real multi-second
+sleeps against the live app (same pattern as `spec/sse.test.ts`'s presence
+checks): rejects a non-participant, a `waiting` room, a forged `Origin`;
+confirms a real ~3s gap credits ~3s, not an arbitrary number; confirms two
+rooms under one session don't double-count an overlapping gap.
+
+### Stopping the silently-faked AI judge
+[`5b095f4`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-yanzzzzzzzz/commit/5b095f4)
+finally root-caused the open item from the previous entry above, rather than
+just re-flagging it. `src/llm.ts`'s `judge()` treated "no `GROQ_API_KEY`" as
+"use the mock" unconditionally — which is exactly right for CI/local testing
+and exactly wrong for a production deploy that forgot to set the Fly secret,
+since both looked identical from the outside. Split into three states
+(`judgeAvailability()`): `real` (key set), `mock` (no key, but
+`ALLOW_MOCK_JUDGE=1` explicitly set — what CI's Docker run and local dev now
+set), and `unavailable` (neither — what an actually-misconfigured production
+deploy now correctly shows: "The AI judge isn't configured on this deploy,"
+never a fabricated verdict). `.github/workflows/checks.yml` and README.md
+updated to match. `spec/llm-availability.test.ts` exercises all three states
+directly (the "neither set" state can't run through the live test server,
+which always carries `ALLOW_MOCK_JUDGE=1` the same way production always
+carries a real key — so this one test file calls `src/llm.ts` directly
+rather than over HTTP, the one deliberate exception to every other spec
+file's "test against the running app" pattern).
+
+This was NOT verified against the live Fly deploy — no secret was read,
+set, or deployed, per this session's authorization boundary. The fix is
+verified to be correct against local runs in all three states; whether the
+production machine's `GROQ_API_KEY` is actually set is still something only
+`flyctl secrets list -a comp4020-final-yanzzzzzzzz` (not run this session)
+can answer. Not claiming the live site is fixed — only that the code no
+longer contains the bug that caused what was observed there.
+
+### Lobby/room UX fixes
+[`0cee40a`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-yanzzzzzzzz/commit/0cee40a):
+- **Multi-tab online-count dedup.** `connectionCount()`/`listMembers()` in
+  `src/sse.ts` counted every open SSE connection, so one person with two
+  tabs on a room showed up as two people — in the room sidebar, the lobby
+  card's player count, AND crit-9's member-list feature, all three reading
+  from the same function. Fixed by deduping on `session_id` wherever a
+  channel carries one (every room does). Verified live (two streams, one
+  session cookie, "1 person online," stays 1 after closing one of the two)
+  and with a new `spec/sse.test.ts` case.
+- **Copy-code / copy-link feedback**, since the brief specifically called
+  out needing success/failure feedback for sharing a room, not just a
+  visible code to select by hand.
+- **A friendly case-not-found page** for `GET /rooms/:code` specifically —
+  the one room-code route a person actually types (the "Have a code?" box,
+  a mistyped link) — rather than Hono's bare 404. Every other room-code
+  route is only reached by clicking something the app already rendered, so
+  those keep the plain 404 (not a user-facing typo path).
+- **Visible "reconnecting" state** for the room's SSE connection
+  (`EventSource.onerror`/`onmessage`), since a drop (Fly's auto-stop/start
+  cycle, an ordinary network blip) reconnects silently on its own and
+  previously looked, to someone watching the page, identical to a stuck one.
+
+### A migration-safety bug found while verifying migration safety
+[`7965107`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-yanzzzzzzzz/commit/7965107).
+The brief's migration requirement ("verify with a local old-schema fixture
+that it preserves data") is what surfaced this: building a fixture from the
+exact schema the UNMODIFIED, already-committed `src/db.ts` would have left
+on disk, seeded with a real room/participants/transcript/authored puzzle,
+and migrating it through that unmodified code wiped every one of those rows
+on the very next boot. Not a bug this session introduced — present since
+`76be42c` (player-authored puzzles), latent because nobody had tested a
+restart against a database holding one.
+
+Root cause: `seedPuzzlesIfEmpty()` reconciled the whole `puzzles` table
+against `SEED_PUZZLES` by set-equality and wiped `qa_entries`,
+`room_participants`, `rooms`, and `puzzles` entirely on any mismatch. Its own
+comment claimed that only happens "when the puzzle bank itself changed
+underneath existing rooms" — but a single player-authored puzzle also
+breaks set-equality, since it's a row `SEED_PUZZLES` doesn't have, with no
+code change needed to trigger it on the next restart of any database that
+ever saw one authored puzzle.
+
+Fixed with a purely additive `seedMissingPuzzles()`: only ever `INSERT`s a
+missing `SEED_PUZZLES` entry among OFFICIAL puzzles
+(`author_session_id IS NULL`), never deletes a row, and never touches an
+authored puzzle. Verified three ways — reproduced the bug against the old
+code with a fixture, confirmed the fix preserves every row when the same
+fixture is booted through it (a real server, real HTTP responses checked),
+and encoded the same sequence as `spec/migration.test.ts`, confirmed it
+fails against the old code and passes against the fix.
+
+### Backup / migration / rollback procedure for `/data` on the live app
+Not run this session (production `/data` is out of this session's
+authorization boundary — no deploy, no production DB access), but recorded
+here since the brief asks for the steps to be written down:
+
+1. **Backup**: `flyctl ssh console -a comp4020-final-yanzzzzzzzz`, then copy
+   `/data/app.db` off the machine (e.g. `flyctl ssh sftp get /data/app.db`
+   from the local machine, or `cat /data/app.db | base64` over the console
+   and decode locally if `sftp` isn't available) before deploying a change
+   that touches `src/db.ts`. WAL mode is on (`PRAGMA journal_mode = WAL`),
+   so also copy `app.db-wal` and `app.db-shm` if present, or run
+   `PRAGMA wal_checkpoint(TRUNCATE);` first to fold them into the main file.
+2. **Migrate**: deploy as normal (`flyctl deploy`, or CI's push-to-main
+   path once public) — every migration in `src/db.ts` runs automatically at
+   process start, against whatever's on the mounted volume, and is written
+   to be idempotent (checked via `ensureColumn`'s existing-column check, the
+   rebuild functions' "already migrated?" `sqlite_master.sql` check) so a
+   re-run or a crash-and-retry mid-migration is safe to just let happen
+   again.
+3. **Verify**: hit the deployed URL's `/` and a known room's `/rooms/:code`
+   immediately after the deploy settles; `flyctl logs` for any migration
+   error (the pattern from the `e1bc624`/`26c13e7` incidents above).
+4. **Rollback**: if a migration leaves the database in a bad state, restore
+   the backed-up `app.db` (`flyctl ssh sftp shell` to put it back, or the
+   base64 round-trip) and `flyctl releases rollback` to the previous image,
+   since a newer image's code may not know how to read an older schema it
+   never migrated away from. Rolling back the image WITHOUT also restoring
+   the backup only works if the migration that ran was non-destructive to
+   begin with (true for everything in this repo's migrations, per the
+   additive-only design above and the pre-existing non-destructive rename
+   migrations) — restoring the backup is the belt-and-suspenders step for a
+   migration that turns out not to be.
