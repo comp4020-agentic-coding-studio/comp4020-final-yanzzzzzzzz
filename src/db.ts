@@ -194,43 +194,42 @@ function ensureRoomsHaveWaitingStatus(): void {
 }
 ensureRoomsHaveWaitingStatus();
 
-// Reconciles the seed puzzles against src/data/puzzles.ts on every boot,
-// rather than inserting once when the table is empty. An "only if empty"
-// seed silently freezes the table at whatever content shipped first — a
-// later edit to SEED_PUZZLES (e.g. a translation) would update the code but
-// never reach rows already sitting on the /data volume. Puzzle text is
-// reference content, not user data, so it's fine to resync it; any room
-// still pointing at a stale puzzle id is cleared along with it, since a
-// mismatch here only happens when the puzzle bank itself changed underneath
-// existing rooms.
-function seedPuzzlesIfEmpty(): void {
-  const rows = db.prepare("SELECT title, premise, solution FROM puzzles").all() as {
-    title: string;
-    premise: string;
-    solution: string;
-  }[];
-  const current = new Set(rows.map((r) => `${r.title}\u0000${r.premise}\u0000${r.solution}`));
-  const wanted = new Set(
-    SEED_PUZZLES.map((p) => `${p.title}\u0000${p.premise}\u0000${p.solution}`),
+// Inserts whatever SEED_PUZZLES entries aren't already present among the
+// OFFICIAL puzzles (author_session_id IS NULL — never touches a
+// player-authored one, matched or not), and never deletes a row. This used
+// to reconcile by wiping qa_entries/room_participants/rooms/puzzles
+// entirely whenever the live table didn't exactly equal SEED_PUZZLES by
+// set-equality — which doesn't just mean "a seed puzzle's text changed," it
+// also means "a player authored a new puzzle," since that changes the
+// table's total row set too. That made every boot of a database holding
+// even one authored puzzle wipe every real room, participant, transcript
+// entry, and puzzle in the whole app — confirmed by migrating a fixture
+// database seeded with real rooms/participants/transcript entries through
+// this exact code path and watching it come back empty. A purely additive
+// reconciliation can't do that: adding a new seed puzzle, or editing one's
+// text in code, only ever inserts a new row here, and an old edition of an
+// edited puzzle is left in place rather than deleted, since deleting it
+// could orphan a room's `puzzle_id` foreign key if any room still points at
+// it — leaving a harmless unreferenced extra row is strictly safer than
+// either a dangling FK or a blanket wipe.
+function seedMissingPuzzles(): void {
+  const existingOfficial = db
+    .prepare("SELECT title, premise, solution FROM puzzles WHERE author_session_id IS NULL")
+    .all() as { title: string; premise: string; solution: string }[];
+  const present = new Set(
+    existingOfficial.map((r) => `${r.title}\u0000${r.premise}\u0000${r.solution}`),
   );
-  const upToDate =
-    current.size === wanted.size && [...current].every((entry) => wanted.has(entry));
-  if (upToDate) return;
 
-  db.exec(`
-    DELETE FROM qa_entries;
-    DELETE FROM room_participants;
-    DELETE FROM rooms;
-    DELETE FROM puzzles;
-  `);
   const insert = db.prepare(
     "INSERT INTO puzzles (id, title, premise, solution) VALUES (?, ?, ?, ?)",
   );
   for (const puzzle of SEED_PUZZLES) {
+    const key = `${puzzle.title}\u0000${puzzle.premise}\u0000${puzzle.solution}`;
+    if (present.has(key)) continue;
     insert.run(randomUUID(), puzzle.title, puzzle.premise, puzzle.solution);
   }
 }
-seedPuzzlesIfEmpty();
+seedMissingPuzzles();
 
 export interface Puzzle {
   id: string;
