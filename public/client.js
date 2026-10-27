@@ -12,6 +12,15 @@
   );
 
   const VERDICT_LABEL = { yes: "Yes", no: "No", irrelevant: "Irrelevant", correct: "✓ Correct!" };
+  // Mirrors src/routes/rooms.ts's NOTICES — only the subset reachable from
+  // POST /rooms/:code/ask's own rejections (cooldown, not-started,
+  // author-guess), since that's the only redirect this form's own fetch()
+  // can land on.
+  const NOTICE_TEXT = {
+    cooldown: "Slow down — the same person has to wait a few seconds between questions.",
+    "not-started": "This case hasn't started yet — wait for the host.",
+    "author-guess": "You wrote this case — let someone else crack it.",
+  };
 
   function escapeHtml(s) {
     return s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
@@ -27,7 +36,7 @@
       const verdictLabel = entry.verdict ? VERDICT_LABEL[entry.verdict] ?? entry.verdict : "…";
       const verb = entry.kind === "guess" ? "guesses" : "asks";
       li.innerHTML = `
-        <p class="entry-question"><span class="entry-label">${escapeHtml(entry.label ?? "Anonymous Detective")}</span> ${verb}: ${escapeHtml(entry.body)}</p>
+        <p class="entry-question"><span class="entry-label">${escapeHtml(entry.label ?? "匿名侦探")}</span> ${verb}: ${escapeHtml(entry.body)}</p>
         <p class="entry-verdict">AI judge: <strong>${escapeHtml(verdictLabel)}</strong></p>
       `;
     }
@@ -39,10 +48,13 @@
     if (judgingEl) judgingEl.hidden = true;
   }
 
+  let lastId = section.dataset.lastId ? Number(section.dataset.lastId) : 0;
+
   function appendEntry(entry) {
     const id = String(entry.id);
     if (seen.has(id)) return;
     seen.add(id);
+    lastId = Math.max(lastId, entry.id);
     hideJudging(); // every path that reaches this appends at least one entry
     transcript.appendChild(renderEntry(entry));
     transcript.lastElementChild.scrollIntoView({ block: "nearest" });
@@ -95,36 +107,85 @@
     connectionStatusEl.hidden = !message;
   }
 
-  const lastId = section.dataset.lastId ? Number(section.dataset.lastId) : 0;
-  const source = new EventSource(`/rooms/${roomCode}/stream?after=${lastId}`);
-  source.onmessage = (event) => {
-    setConnectionStatus("");
-    if (!event.data) return; // heartbeat
-    appendEntry(JSON.parse(event.data));
-  };
-  source.onerror = () => {
-    if (source.readyState === EventSource.CONNECTING) {
-      setConnectionStatus("⚠️ Connection lost, reconnecting…");
-    }
-  };
-  source.addEventListener("presence", (event) => {
-    setConnectionStatus("");
-    renderPresence(JSON.parse(event.data));
-  });
-  source.addEventListener("judging", (event) => {
-    setConnectionStatus("");
-    if (!judgingEl) return;
-    const { label } = JSON.parse(event.data);
-    judgingEl.textContent = `⌛ ${label} is waiting on the AI judge…`;
-    judgingEl.hidden = false;
-  });
+  // Not room-status aware server-side (status/host flip): simplest correct
+  // response to "the room I'm looking at changed shape" is a fresh render,
+  // same as a solved verdict does above — re-deriving the waiting/active
+  // markup, the ask-form's presence, and the host badge in JS would mean
+  // keeping two copies of that logic in sync instead of one.
+  function handleRoomStatus() {
+    location.reload();
+  }
+
+  const noticeEl = document.getElementById("ask-notice");
+  function showAskNotice(message) {
+    if (!noticeEl) return;
+    noticeEl.textContent = message;
+    noticeEl.hidden = false;
+  }
+
+  let source = null;
+
+  // A fresh connection (first load, or re-opened after pageshow/visibility
+  // restores it) always asks for everything after whatever this tab has
+  // actually rendered so far — appendEntry()'s `seen` set additionally drops
+  // anything this exact tab already has, so a reconnect can't duplicate an
+  // entry even if the server's replay overlaps what was already shown.
+  function connectRoomStream() {
+    if (source) return;
+    source = new EventSource(`/rooms/${roomCode}/stream?after=${lastId}`);
+    source.onmessage = (event) => {
+      setConnectionStatus("");
+      if (!event.data) return; // heartbeat
+      appendEntry(JSON.parse(event.data));
+    };
+    source.onerror = () => {
+      if (source.readyState === EventSource.CONNECTING) {
+        setConnectionStatus("⚠️ Connection lost, reconnecting…");
+      }
+    };
+    source.addEventListener("presence", (event) => {
+      setConnectionStatus("");
+      renderPresence(JSON.parse(event.data));
+    });
+    source.addEventListener("judging", (event) => {
+      setConnectionStatus("");
+      if (!judgingEl) return;
+      const { label } = JSON.parse(event.data);
+      judgingEl.textContent = `⌛ ${label} is waiting on the AI judge…`;
+      judgingEl.hidden = false;
+    });
+    // A REAL, reproduced bug: starting the room or transferring host never
+    // reached a tab that was already sitting open on the waiting-room view
+    // or the member list — nothing was ever broadcast for either action, so
+    // "the other person's input box becomes usable after I start the case"
+    // silently didn't happen without a manual reload. src/routes/rooms.ts
+    // now broadcasts a "room-status" event on both actions; reloading here
+    // is what actually picks up the new markup.
+    source.addEventListener("room-status", handleRoomStatus);
+  }
+
+  function disconnectRoomStream() {
+    if (!source) return;
+    source.close();
+    source = null;
+  }
+
+  connectRoomStream();
 
   // Navigating away (e.g. clicking a link) doesn't necessarily tear down an
   // in-flight EventSource right away — the browser may leave it dangling for
   // a while before the server notices it's gone. Closing it explicitly on
   // pagehide tells the server immediately, so the online count drops without
-  // a delay.
-  window.addEventListener("pagehide", () => source.close());
+  // a delay. Restoring the page from the back/forward cache (pageshow with
+  // persisted=true) does NOT re-run this script, so without reconnecting
+  // here a page reached via the browser's back/forward buttons would be left
+  // holding a closed EventSource forever — a real gap, not just this
+  // session's lobby.js fix: a user going "back" into a room mid-game would
+  // see a page that looks alive but has silently stopped updating.
+  window.addEventListener("pagehide", disconnectRoomStream);
+  window.addEventListener("pageshow", (event) => {
+    if (event.persisted) connectRoomStream();
+  });
 
   // Copy-to-clipboard for the room code and the shareable link. Both are
   // plain <button type="button">s with no form action, so with JS off
@@ -230,12 +291,29 @@
     clicked.textContent = kind === "guess" ? "Judge is weighing your guess…" : "AI judge is thinking…";
 
     try {
-      await fetch(form.action, {
+      // The server always answers a rejected submission (cooldown,
+      // not-started, author-guess) with a 303 to this same page carrying
+      // ?notice=..., not an error status — fetch()'s default redirect:
+      // "follow" means `res.ok` is true either way, so a REAL bug this
+      // session reproduced was this code clearing the input and reporting
+      // nothing on a rejection, silently discarding whatever the player
+      // typed. Reading the final response's own URL (same information a
+      // full-page-reload submit would show, via its address bar after the
+      // 303) is what actually distinguishes the two cases.
+      const res = await fetch(form.action, {
         method: "POST",
         headers: { "Content-Type": "application/x-www-form-urlencoded" },
         body: new URLSearchParams({ question, kind }),
       });
-      input.value = "";
+      const notice = new URL(res.url).searchParams.get("notice");
+      if (notice) {
+        showAskNotice(NOTICE_TEXT[notice] ?? "That didn't go through — please try again.");
+        // Deliberately NOT clearing the input: a rejected submission is the
+        // one case where the player's typed text should still be there to
+        // retry, not silently gone.
+      } else {
+        input.value = "";
+      }
     } catch {
       // the SSE connection or a page refresh will still show the true state;
       // surface a hint rather than failing silently

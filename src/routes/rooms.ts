@@ -27,7 +27,7 @@ import { getOrCreateSessionId } from "../session.ts";
 import { roomPage } from "../render/room.ts";
 import { newRoomPage } from "../render/room-new.ts";
 import { roomNotFoundPage } from "../render/not-found.ts";
-import { LOBBY_CHANNEL } from "./lobby.ts";
+import { broadcastLobbyCardChange, LOBBY_CHANNEL } from "./lobby.ts";
 
 const COOLDOWN_MS = 5_000;
 
@@ -85,14 +85,22 @@ rooms.post("/rooms", async (c) => {
   const room = createRoom(puzzle.id, { name, hostSessionId: sessionId });
   // Nobody's connected yet, so 0 players is the true count, not a
   // placeholder — and every room starts 'waiting' until its host starts it.
-  broadcast(LOBBY_CHANNEL, room.id, {
-    code: room.code,
-    name: room.name,
-    title: puzzle.title,
-    status: room.status,
-    players: 0,
-    hostLabel: hostLabel(sessionId),
-  });
+  // Same "lobby-update" event (and payload shape) as broadcastLobbyCardChange
+  // uses for a status/host change — public/lobby.js has one upsert handler
+  // for both "a new card" and "an existing card changed," not two.
+  broadcast(
+    LOBBY_CHANNEL,
+    room.id,
+    {
+      code: room.code,
+      name: room.name,
+      title: puzzle.title,
+      status: room.status,
+      players: 0,
+      hostLabel: hostLabel(sessionId),
+    },
+    "lobby-update",
+  );
   return c.redirect(`/rooms/${room.code}`, 303);
 });
 
@@ -145,6 +153,17 @@ rooms.get("/rooms/:code", (c) => {
   );
 });
 
+// Every other viewer already sitting on this room's page (someone else just
+// started it, or just transferred host) learns about it through this, not a
+// manual refresh — found missing when a user reported "the other side's
+// input box doesn't become usable after I start the case." Root cause:
+// starting a room or transferring host only ever redirected the REQUESTING
+// session; nothing was ever broadcast on the room's SSE channel, so a tab
+// that was already open and wasn't the one that just POSTed had no way to
+// learn the room's status/host changed. public/client.js's "room-status"
+// listener reacts by reloading, the simplest correct way to pick up the
+// now-different waiting/active markup (the ask-form's presence, the waiting
+// notice, the host badge) without duplicating every render branch in JS.
 rooms.post("/rooms/:code/start", (c) => {
   const room = getRoomByCode(c.req.param("code"));
   if (!room) return c.notFound();
@@ -165,6 +184,16 @@ rooms.post("/rooms/:code/start", (c) => {
       label: null,
     });
     broadcast(room.id, entry.id, entry);
+    broadcast(
+      room.id,
+      Date.now(),
+      { status: "active", hostSessionId: room.host_session_id },
+      "room-status",
+    );
+    // The lobby's own card for this room shows "not started" / "in
+    // progress" — a viewer sitting on the homepage while this room starts
+    // sees that flip live too, not just someone sitting on the room page.
+    broadcastLobbyCardChange(room.id, room.code);
   }
   return c.redirect(`/rooms/${room.code}`, 303);
 });
@@ -180,6 +209,13 @@ rooms.post("/rooms/:code/transfer-host", async (c) => {
   const toSessionId = String(body.toSessionId ?? "");
   if (toSessionId && toSessionId !== sessionId && isParticipant(room.id, toSessionId)) {
     transferHost(room.id, toSessionId);
+    broadcast(
+      room.id,
+      Date.now(),
+      { status: room.status, hostSessionId: toSessionId },
+      "room-status",
+    );
+    broadcastLobbyCardChange(room.id, room.code);
   }
   return c.redirect(`/rooms/${room.code}`, 303);
 });
@@ -334,10 +370,17 @@ rooms.get("/rooms/:code/stream", (c) => {
   };
 
   return streamSSE(c, async (stream) => {
-    for (const entry of getTranscript(room.id, afterId)) {
-      await stream.writeSSE({ id: String(entry.id), data: JSON.stringify(entry) });
-    }
-
+    // subscribe() BEFORE reading the DB snapshot, not after: an entry
+    // inserted between those two steps used to land in neither — missed by
+    // the snapshot query (already run) and broadcast to nobody (not
+    // subscribed yet) — a real, reproduced gap, not theoretical: on a slow
+    // connection the window between a fresh page load's server-rendered
+    // transcript and this stream endpoint actually opening is wide enough to
+    // lose a question/answer someone else posted in between, invisible until
+    // a manual reload. Subscribing first can instead double-deliver an entry
+    // inserted in the now-much-smaller window between subscribe() and the
+    // snapshot read (once live, once via snapshot) — harmless, since
+    // public/client.js's `seen` id set already drops a duplicate silently.
     let closed = false;
     const unsubscribe = subscribe(room.id, {
       label,
@@ -349,6 +392,11 @@ rooms.get("/rooms/:code/stream", (c) => {
         closed = true;
       },
     });
+
+    for (const entry of getTranscript(room.id, afterId)) {
+      await stream.writeSSE({ id: String(entry.id), data: JSON.stringify(entry) });
+    }
+
     // Tells every connected client (including this one) the new roster.
     broadcastPresence();
 
