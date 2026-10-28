@@ -17,7 +17,7 @@ it("serves a short player-facing /about page, distinct from the technical /readm
   // Links to the technical doc rather than inlining it.
   expect(html).toContain('href="/readme/"');
 
-  for (const devDetail of ["SQLite", "Fly.io", "fly.toml", "GROQ", "Dockerfile", "PROCESS.md", "/data"]) {
+  for (const devDetail of ["SQLite", "Fly.io", "fly.toml", "Gemini", "Dockerfile", "PROCESS.md", "/data"]) {
     expect(html, `/about should not mention "${devDetail}"`).not.toContain(devDetail);
   }
 });

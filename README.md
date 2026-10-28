@@ -127,33 +127,72 @@ no number borrowed from anywhere else.
 
 ## The AI judge
 
-The judge calls [Groq](https://groq.com)'s OpenAI-compatible chat completions
-API (`llama-3.3-70b-versatile`) with the puzzle's premise, its solution, and
-the room's recent transcript, and asks for a strict JSON verdict —
-`yes` / `no` / `irrelevant` / `correct` — plus a short in-character reply.
-The solution itself is never sent to a client while a room is active; it's
-only read server-side to build the judge's prompt, and shown in full once a
-room flips to solved.
+The judge calls [Gemini](https://ai.google.dev)'s native REST
+`generateContent` endpoint (`gemini-3.5-flash-lite` by default — Google's
+current free-tier, structured-output-capable model; override with
+`GEMINI_MODEL` if that changes) with the room's own puzzle — its premise and
+solution, resolved server-side from the room, never supplied by a client —
+plus a short, clearly-labeled slice of that same room's recent transcript for
+pronoun/reference context only. It constrains the response to a single JSON
+field via Gemini's `responseSchema`, never free text: a plain question can
+only ever come back `yes` / `no` / `irrelevant` / `unknown` / `clarify`, and a
+final guess only `correct` / `incomplete` / `incorrect` — two separate
+schemas, so a question can never resolve the puzzle no matter how close it
+gets. Every reply the player actually sees is one of a handful of fixed
+English sentences this app picks based on that enum value — never the
+model's own generated wording, and never any model "thought" content. The
+solution itself is never sent to a client while a room is active; it's only
+read server-side to build the judge's prompt, and shown in full once a room
+flips to solved.
+
+The player's question, the puzzle's own text, and the room's history are all
+treated as data for the model to judge, never as instructions it follows —
+the prompt explicitly tells it to ignore anything embedded in them that asks
+it to reveal the solution, switch puzzles, break these rules, or use a tool
+it was never given.
+
+Internally, Gemini's five-way question decision and three-way guess decision
+are mapped onto the app's original four-value verdict column
+(`yes`/`no`/`irrelevant`/`correct`) rather than widening that column's schema:
+`unknown` and `clarify` both land as `irrelevant`, and `incomplete` and
+`incorrect` both land as `no` — each pair keeps its own distinct fixed reply
+text ("Not established." vs. "Please ask one clear question.", "Your
+explanation is incomplete." vs. "That explanation contradicts the case.") so
+a player can still tell them apart, without a database migration or any
+existing room's history needing a backfill. See `PROCESS.md` for why this
+compromise was chosen over adding a new column.
 
 A per-session cooldown throttles how fast one person can ask questions, and a
-10-second timeout guards every call: if Groq doesn't answer in time, the room
-gets a plain "The AI judge didn't respond in time, please try again shortly"
-message instead of hanging silently.
+request to the same room is serialized: if a second question or guess arrives
+in the same room while the first is still being judged, it's turned away with
+a plain "someone else just asked" notice rather than racing the first for the
+judge call or a potential solve — this also means an already-solved room is
+never judged again, and only a correct **guess**, never a correct-reading
+question, can end a room for everyone. A generous timeout guards every real
+call; that and every other real-call failure (an expired/invalid key, a
+rate-limited or over-quota account, the model declining to answer, a cut-off
+or malformed response) shows its own fixed, readable system message instead
+of hanging silently, retrying automatically, or quietly falling back to a
+different, possibly-paid, model. None of these ever leak the real error text,
+the API key, or the puzzle's solution.
 
-**`GROQ_API_KEY` is a Fly secret in production**, and the app only ever calls
-the real judge when it's set. A small deterministic mock judge exists for
-testing (keyword-matches the question against the solution's own words), but
-it's opt-in, not a silent default: it only runs when `ALLOW_MOCK_JUDGE=1` is
-also set, which `pnpm check`'s Docker run and local dev both set explicitly
-(`.github/workflows/checks.yml`, this section below). **If a deploy is
-missing `GROQ_API_KEY` and hasn't set `ALLOW_MOCK_JUDGE`, the judge is
-unavailable** — every question gets a plain "The AI judge isn't configured on
-this deploy" system message instead of a keyword-matching mock quietly
-pretending to be the real AI. That split exists specifically so a forgotten
-`GROQ_API_KEY` in production fails loudly and tells you to go set a secret,
-rather than serving a never-noticed fake judge indefinitely — which is
-exactly what shipped on this app's own Fly deploy for a stretch (see
-`PROCESS.md`).
+**`GEMINI_API_KEY` is a Fly secret in production**, and the app only ever
+calls the real judge when it's set. A small deterministic mock judge exists
+for testing (keyword-matches the question against the solution's own words),
+but it's opt-in, not a silent default: it only runs when `ALLOW_MOCK_JUDGE=1`
+is also set, which `pnpm check`'s Docker run and local dev both set
+explicitly (`.github/workflows/checks.yml`, this section below). **If a
+deploy is missing `GEMINI_API_KEY` and hasn't set `ALLOW_MOCK_JUDGE`, the
+judge is unavailable** — every question gets a plain "The AI judge isn't
+configured on this deploy" system message instead of a keyword-matching mock
+quietly pretending to be the real AI. That split exists specifically so a
+forgotten `GEMINI_API_KEY` in production fails loudly and tells you to go set
+a secret, rather than serving a never-noticed fake judge indefinitely — which
+is exactly what shipped on this app's own Fly deploy for a stretch, under the
+prior Groq-backed judge (see `PROCESS.md`).
+
+This app previously called [Groq](https://groq.com)'s chat-completions API
+instead — see `PROCESS.md` for why it moved to Gemini and what that changed.
 
 ## Running locally
 
@@ -162,12 +201,13 @@ pnpm install
 DATA_DIR=./.data PORT=8080 ALLOW_MOCK_JUDGE=1 node src/server.ts
 ```
 
-Set `GROQ_API_KEY` in the environment (or an untracked `.env`) to use the
+Set `GEMINI_API_KEY` in the environment (or an untracked `.env`) to use the
 real judge instead of the mock one — when it's set, `ALLOW_MOCK_JUDGE` is
 ignored and the real judge always wins. Without a real key, set
 `ALLOW_MOCK_JUDGE=1` to get the deterministic mock for local testing;
 without either, every question will correctly show "AI judge isn't
 configured," matching what an unconfigured production deploy would show.
+`GEMINI_MODEL` optionally overrides the default model name.
 `DATA_DIR` defaults to `/data`, which only exists inside the deployed
 container; point it somewhere writable for
 local runs.

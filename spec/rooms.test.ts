@@ -1,7 +1,7 @@
 import { expect, inject, it } from "vitest";
 import { SEED_PUZZLES } from "../src/data/puzzles.ts";
 
-// CI never sets GROQ_API_KEY (the course's own LLM proxy key is
+// CI never sets GEMINI_API_KEY (the course's own LLM proxy key is
 // ANU-network-restricted and unreachable from a Fly machine or a GitHub
 // runner — see PROCESS.md), so src/llm.ts always falls back to its
 // deterministic mock judge here — CI explicitly opts into that fallback via
