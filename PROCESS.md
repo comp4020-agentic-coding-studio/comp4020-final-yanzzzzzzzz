@@ -2259,4 +2259,5 @@ after this pass. Port 8085 specifically carries the now-abandoned flip
 animation the user already saw and rejected — not this commit's own
 no-animation result, which Codex will preview fresh.
 
+Commit: [`a988225`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-yanzzzzzzzz/commit/a988225).
 Local only, not pushed, per this session's explicit authorization.
