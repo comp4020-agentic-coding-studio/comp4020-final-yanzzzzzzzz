@@ -1054,3 +1054,92 @@ calls were denied by this environment's permission policy before that could
 even be confirmed from the Actions UI, so the manual `flyctl deploy` path
 above was the one actually exercised and verified, consistent with
 `fly.toml`'s own documented behavior for a private repo.
+
+## A shorter About, and a real case browser
+
+Two user-reported problems, fixed and deployed together: `/readme/` (the
+full technical README) was the site nav's only "About" link, so a player
+had to read stack/CI/Fly/database detail just to learn how to play; and the
+homepage's "Start a new case" and "Browse every case" buttons both pointed
+at `/rooms/new`, so "browse" never actually showed anyone what was playable.
+
+**Short About page**
+([`d1b4fb0`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-yanzzzzzzzz/commit/d1b4fb0)):
+added a real `/about` route — title, a one-line premise, the three-step
+loop (read the premise, ask the shared AI judge yes/no/irrelevant questions,
+solve it together and submit a guess), how a room starts, the content
+warning, and two entry points (`Start a new case` / `Back to lobby`) — no
+stack, CI, Fly, database, course brief, or code. `/readme/` keeps serving
+`README.md` verbatim unchanged (`spec/invariants.test.ts`'s heading-order
+check is untouched — it checks `/readme/`, never `/about`), just relabelled
+"Technical documentation" in its own `<title>` and linked from `/about`'s
+footer for anyone who wants it. The site nav's `About` link moved from
+`/readme/` to `/about` in `layout.ts`, the one shared template every page
+renders through, so this is a one-line nav change, not a per-page edit.
+Said "AI acts as a shared judge when available" rather than naming Groq or
+implying the judge is always configured — matches the real
+`judgeAvailability()` states (`real`/`mock`/`unavailable`) documented above
+without exposing which one is live.
+
+**`/cases`, and actually wiring the preselect it needs**
+([`c5290c3`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-yanzzzzzzzz/commit/c5290c3)):
+root cause of the duplicate-link bug was literal — `home.ts`'s "Browse every
+case" `<a>` had just never been pointed anywhere but `/rooms/new`, the same
+href "Start a new case" uses. Fixing the link alone would have made
+"browse" silently do nothing new, so built the page it should have pointed
+at: `/cases` lists every shared/built-in puzzle's title, full premise, and a
+real author-or-official label, with a `?q=` search (length-capped at 80
+chars, `%`/`_` escaped before going into `LIKE`, input HTML-escaped on the
+way back out, a plain "no cases match" empty state) — all through
+`listAvailablePuzzles()` unchanged in shape (same columns, so it still
+structurally cannot select `solution`), just given an optional search
+filter. Visibility is identical to the existing room-creation picker's,
+reusing the same function rather than a second query someone could let
+drift out of sync with it.
+
+Each card's "Play this case" goes to `/rooms/new?puzzleId=<id>` — which
+turned out to accept that query param already (`room-new.ts`'s
+`PuzzleOption` rendering) but never actually read it, so the link worked but
+silently did nothing. Wired `rooms.get("/rooms/new", ...)` to read
+`?puzzleId=`, re-validate it against `isPuzzleAvailable()` (the exact check
+`POST /rooms` already enforces for a client-supplied id) before passing it
+through as `selectedPuzzleId`, and render it as the `<option>`'s `selected`
+attribute. The re-validation is the real decision here, not a formality: a
+`?puzzleId=` pointing at a private authored puzzle, or at a nonexistent id,
+falls back to no selection rather than preselecting — or, worse, confirming
+the existence of — a puzzle the requester shouldn't be able to see from a
+bare GET with no session check on it otherwise.
+
+Verified against an isolated local server (`PORT=8082`, its own throwaway
+`DATA_DIR`, the user's own 8080/8081 processes never stopped or touched):
+created a private authored puzzle and confirmed its title appears on
+neither `/cases` nor the `/rooms/new` picker; confirmed `?q=turtle` matches,
+an unmatched query reports "no cases," and a `<script>` payload comes back
+escaped; and — the one check that actually proves the preselect isn't
+cosmetic — fetched a real puzzle's id from the picker, loaded
+`/rooms/new?puzzleId=<id>`, confirmed the option rendered `selected`, then
+actually submitted the existing-case form and read the created room's own
+page to confirm it was running that exact puzzle, not just that the HTML
+looked right. `spec/about.test.ts` and `spec/cases-browse.test.ts` encode
+all of the above as a permanent regression suite (9 new tests); full suite
+ran 44/44 across 11 files, `pnpm typecheck` and `pnpm build` both clean,
+all against the isolated 8082 server.
+
+**Deploy**: `flyctl deploy --remote-only --ha=false -a
+comp4020-final-yanzzzzzzzz` via `mise exec -- flyctl`, same command and
+auth path as the prior manual deploy above. This pass touches no schema and
+no existing row — `/about` and `/cases` are new read-only routes, and
+`listAvailablePuzzles()`'s SQL change only adds an optional `WHERE` clause
+to an existing `SELECT` — so no `/data` backup was taken before this deploy
+(nothing migration-shaped to protect against). The machine reported healthy
+after the rolling update; Fly's own post-deploy DNS check timed out once
+(`read udp ...->8.8.8.8:53: i/o timeout`) — the same transient resolver
+blip already seen and independently confirmed harmless in the prior deploy
+entry above, not an app or deploy failure.
+
+Verified live, not just from the build/deploy log: fetched
+`https://comp4020-final-yanzzzzzzzz.fly.dev/`, `/about`, `/cases`, and
+`/readme/` directly and got 200 from all four; parsed the live homepage's
+own rendered HTML and confirmed the nav's `About` link resolves to `/about`
+and `Browse every case` resolves to `/cases` (not `/rooms/new`) on the
+actual deployed site, not just in the local test server.
