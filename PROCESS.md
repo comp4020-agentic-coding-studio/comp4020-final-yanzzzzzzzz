@@ -1842,3 +1842,115 @@ Local only, not pushed, per this session's explicit authorization — the
 "open case file" room-creation redesign the user also asked for in the same
 message continues immediately below, in the same session, without resetting
 or discarding anything above.
+
+## /rooms/new as an open case file on the investigation desk
+
+Continuing the same session: the user's instruction was explicit about
+order — re-verify and close out the hero-declutter pass's commits/tests/
+PROCESS first (confirmed still green: re-ran the full suite against a
+freshly started isolated server, `pnpm typecheck` clean, 79/79 across 17
+files, `git status` clean with local `main` 7 commits ahead of
+`origin/main` and nothing pushed — a checkpoint, not a repair), *then* move
+to the room-creation redesign below, in the same session, without resetting
+or discarding anything above.
+
+The accepted design: `/rooms/new` should stop reading as a flat, unstyled
+form and instead look like an open manila case file sitting on the same
+dark investigation desk the homepage hero establishes — a left "page"
+showing the chosen case's cover/title/premise (or a sealed state when
+nothing's picked), and a right "page" with room settings and the submit
+button, both inside one real form.
+
+**Structure**
+([`b6b091f`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-yanzzzzzzzz/commit/b6b091f)):
+`src/render/room-new.ts` rewritten so "Choose a case" / "Write your own" are
+folder tabs (`.case-tabs`) above a `.case-file-desk` surface, and both modes
+render exactly one `<form id="create-form">` spanning two visual halves via
+CSS grid, not two documents — no nested forms, no duplicate ids (checked
+directly, not assumed), and `POST /rooms`'s field names/validation/notices
+are completely unchanged, so this is a template/CSS/client-JS-only pass.
+
+**The "Surprise me" sealing decision, the one real product choice here**:
+previously the picker's default empty `<option>` had no visual
+consequence — nothing stopped a reader from assuming whatever cover
+happened to render was the chosen one. Now the left page explicitly shows
+"Sealed case" / "Let fate choose your mystery" on a flat glyph panel,
+never a real cover/title/premise, until either a real `?puzzleId=`
+(server-revalidated through the existing, unchanged `isPuzzleAvailable()`
+check) or a live `<select>` change actually names a case.
+`pickRandomPuzzle()` still only runs at submit time; showing anything more
+specific before that would be presenting a guess as a decided fact. The
+same "don't show a secret before it's earned" rule shapes author mode too:
+the left page only ever takes a title/premise (what a player would
+eventually see); the solution field — labelled "(hidden until solved)" —
+sits on the right page with the share checkbox and room name, matching in
+layout the same sealed-until-solved rule the backend already enforces.
+
+**Motion, scoped exactly as asked**: a ~450ms entrance
+(`case-file-page-in`: fade + small `translateY`) plays once per page load,
+gated behind `prefers-reduced-motion: no-preference` like every other
+animation on the site, and is a plain page-load animation — not replayed on
+a `?puzzleId=` tab switch, since that's an ordinary link navigation (a new
+page load is this same entrance playing again, not a special "replay"
+case). The base rules for the animated elements carry no `opacity: 0`
+outside the media query, so content is fully present with the query
+unmatched or JS off. A separate, shorter 250ms fade plays only when the
+picker's own `<select>` changes the left page's content client-side.
+
+**Desk/paper styling**: new `--paper`/`--paper-ink` custom properties (a
+warm old-paper tone) are scoped to the folder's two pages only — the one
+place content is meant to read as a physical document — layered alongside
+the existing four site-wide tokens rather than replacing them.
+`.case-file-form`'s CSS-only center-seam gradient (a `::before`, no image)
+stands in for a binding on desktop and is dropped below `54rem`, where the
+grid collapses to one column; DOM order is left-page-then-right-page, so
+mobile naturally reads "story, then room settings" without a media query
+reordering anything, and nothing is absolutely positioned over the fields.
+Stale rules (`.create-tabs`, `.create-case form`, `.puzzle-preview`) were
+removed rather than left dead alongside their replacements.
+
+**New tests** (`spec/case-file.test.ts`, 13 tests, not loosening any
+existing one): the sealed-by-default state, specifically asserting the left
+page's own `<h2 class="case-file-title">` never shows a real title when
+nothing was picked (puzzle titles legitimately still appear inside the
+`<select>`'s own options — that's how a pick is made — so the assertion
+targets the heading specifically, not "the string doesn't appear anywhere
+on the page"); exactly one `<form>` and no duplicate DOM ids in both modes;
+every `<label for>` resolves to a real id in both modes; a real `?puzzleId=`
+renders the true cover/title/premise and the correct `selected` attribute;
+the embedded `puzzle-data` JSON never carries a `solution` key, checked
+across every entry present, not just the first; author mode's solution
+field is labelled hidden-until-solved; an invalid/private id falls back to
+sealed without erroring or leaking; both POST paths (random pick,
+incomplete-author notice) still work end to end; the tabs are real
+`aria-current` links; and three `jsdom` tests drive the REAL
+`public/create-case.js` against the REAL rendered page (same harness
+pattern `spec/music.test.ts`/`spec/live-sync.test.ts` already established)
+— selecting a case swaps the left page live, switching back to "Surprise
+me" restores the sealed state rather than leaving a stale pick showing, and
+the author-mode submit-label swap on the share checkbox.
+
+**Verified**: `pnpm typecheck` and `pnpm build` clean. Full suite **92/92
+across 18 files** (79 pre-existing + 13 new, zero existing test needed
+changing) against a freshly restarted isolated local server (port 8082, its
+own throwaway `DATA_DIR`) — restarted because this is a server-side
+template change a long-running process wouldn't pick up on its own. Before
+writing the permanent tests, manually fetched every real scenario first:
+default sealed state, a real `?puzzleId=` preselect, an invalid id's
+fallback, both POST paths, the embedded puzzle-data JSON's keys (confirmed
+no `solution` key across all 23 entries present at the time), and confirmed
+no duplicate DOM ids / every label's `for` target resolves, in both modes.
+`node --check public/create-case.js` confirmed script syntax; a brace-count
+check confirmed `styles.css` parses as balanced CSS. The user's own preview
+processes on ports 8081 and 8083 were never stopped, restarted, or touched.
+
+**Not done in this pass, and not claimed as done**: an actual browser
+render check at any real viewport or interaction — this environment still
+has no GUI browser. Per the user's own stated plan, Codex will restart its
+local preview (port 8083) now that both the hero-seam fix and this
+room-creation redesign are committed, specifically to avoid reviewing new
+CSS/JS against stale cached HTML or vice versa.
+
+Commit: [`b6b091f`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-yanzzzzzzzz/commit/b6b091f).
+Local only, not pushed, per this session's explicit authorization.
+
