@@ -147,7 +147,10 @@ it("the case-source tabs are real links with aria-current, not JS-only tab panel
 
 // Drives the REAL public/create-case.js against the REAL rendered page in
 // jsdom, same pattern spec/music.test.ts and spec/live-sync.test.ts use —
-// not a reimplementation of the swap logic in test code.
+// not a reimplementation of the swap logic in test code. jsdom implements
+// neither window.fetch nor URL.createObjectURL (same gaps spec/live-sync.ts
+// already works around for window.fetch) — both wired here since the
+// instant mode switch (create-case.js) calls both for real.
 async function loadCreateCaseDom(path: string): Promise<{ window: JSDOM["window"] }> {
   const html = await (await fetch(new URL(path, baseUrl))).text();
   const dom = new JSDOM(html, {
@@ -155,10 +158,34 @@ async function loadCreateCaseDom(path: string): Promise<{ window: JSDOM["window"
     runScripts: "dangerously",
     resources: "usable",
     pretendToBeVisual: true,
+    beforeParse(window) {
+      const realFetch = fetch;
+      window.fetch = ((url: string | URL, opts?: RequestInit) =>
+        realFetch(new URL(url, window.location.href).toString(), opts)) as typeof window.fetch;
+      window.URL.createObjectURL = () => "blob:test-fixture";
+      window.URL.revokeObjectURL = () => {};
+    },
   });
   await new Promise((resolve) => dom.window.addEventListener("load", resolve));
   await new Promise((resolve) => setTimeout(resolve, 50));
   return { window: dom.window };
+}
+
+function clickTab(window: JSDOM["window"], mode: "existing" | "author"): void {
+  const tab = [...window.document.querySelectorAll(".case-tabs a")].find((a) =>
+    a.getAttribute("href")?.includes(`mode=${mode}`),
+  ) as HTMLAnchorElement | undefined;
+  if (!tab) throw new Error(`no .case-tabs link for mode=${mode}`);
+  tab.dispatchEvent(new window.MouseEvent("click", { bubbles: true, cancelable: true, button: 0 }));
+}
+
+async function waitForMode(window: JSDOM["window"], mode: "existing" | "author", timeoutMs = 2000): Promise<void> {
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    if (window.document.getElementById("case-file-mode-root")?.dataset.mode === mode) return;
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  }
+  throw new Error(`timed out waiting for mode=${mode}`);
 }
 
 it("selecting a real case in the picker swaps the left page to that case's real cover/title/premise, live", async () => {
@@ -205,5 +232,148 @@ it("the author-mode submit label swaps when 'share publicly' is checked, real DO
   shared.dispatchEvent(new window.Event("change", { bubbles: true }));
   await new Promise((resolve) => setTimeout(resolve, 20));
   expect(submit.textContent).toBe("Publish case and create room");
+  window.close();
+});
+
+// ---------- Instant mode switching between "Choose a case" / "Write your own" ----------
+// Drives the REAL public/create-case.js's tab-click interception against the
+// REAL rendered page, same harness pattern as the swap/submit-label tests
+// above — not a reimplementation of the switch/draft logic in test code.
+// An earlier version of this pass added a short flip/rotate CSS animation
+// to this transition; dropped entirely after a real-browser check read it
+// as broken rather than book-like (not a close call worth tuning further).
+// The switch is a synchronous DOM swap now, so these tests check the actual
+// behavior that matters — draft/cover preservation, focus, history — not
+// any animation timing.
+
+it("clicking a .case-tabs link swaps the mode in place (no full navigation) and updates the URL via pushState", async () => {
+  const { window } = await loadCreateCaseDom("/rooms/new?mode=existing");
+  clickTab(window, "author");
+  await waitForMode(window, "author");
+  expect(window.document.getElementById("title")).toBeTruthy();
+  expect(window.location.href).toContain("mode=author");
+  window.close();
+});
+
+it("switching modes and back preserves an in-progress author draft (title/premise/solution/shared/room name)", async () => {
+  const { window } = await loadCreateCaseDom("/rooms/new?mode=author");
+  (window.document.getElementById("title") as HTMLInputElement).value = "Draft Title";
+  (window.document.getElementById("premise") as HTMLTextAreaElement).value = "Draft premise text.";
+  (window.document.getElementById("solution") as HTMLTextAreaElement).value = "Draft solution text.";
+  (window.document.getElementById("name") as HTMLInputElement).value = "Draft room name";
+  const shared = window.document.getElementById("shared") as HTMLInputElement;
+  shared.checked = true;
+  shared.dispatchEvent(new window.Event("change", { bubbles: true }));
+
+  clickTab(window, "existing");
+  await waitForMode(window, "existing");
+  clickTab(window, "author");
+  await waitForMode(window, "author");
+
+  expect((window.document.getElementById("title") as HTMLInputElement).value).toBe("Draft Title");
+  expect((window.document.getElementById("premise") as HTMLTextAreaElement).value).toBe("Draft premise text.");
+  expect((window.document.getElementById("solution") as HTMLTextAreaElement).value).toBe("Draft solution text.");
+  expect((window.document.getElementById("name") as HTMLInputElement).value).toBe("Draft room name");
+  expect((window.document.getElementById("shared") as HTMLInputElement).checked).toBe(true);
+  // The derived submit-label state (create-case.js's own shared-checkbox
+  // sync) should also reflect the restored checkbox state, not just the
+  // checkbox's raw value — proof the restored checkbox's "change" handler
+  // actually re-ran, not merely that the property was set.
+  expect((window.document.getElementById("create-submit") as HTMLButtonElement).textContent).toBe(
+    "Publish case and create room",
+  );
+  window.close();
+});
+
+it("switching modes and back preserves a chosen cover file as the SAME input node, with its preview restored", async () => {
+  const { window } = await loadCreateCaseDom("/rooms/new?mode=author");
+  const coverInput = window.document.getElementById("cover") as HTMLInputElement;
+  const file = new window.File(["fake-image-bytes"], "cover.jpg", { type: "image/jpeg" });
+  Object.defineProperty(coverInput, "files", { value: [file], configurable: true });
+  coverInput.dispatchEvent(new window.Event("change", { bubbles: true }));
+  await new Promise((resolve) => setTimeout(resolve, 20));
+  expect(window.document.getElementById("cover-preview")!.innerHTML).toContain("<img");
+
+  clickTab(window, "existing");
+  await waitForMode(window, "existing");
+  clickTab(window, "author");
+  await waitForMode(window, "author");
+
+  const coverInputAfter = window.document.getElementById("cover") as HTMLInputElement;
+  expect(coverInputAfter).toBe(coverInput);
+  expect(coverInputAfter.files?.[0]?.name).toBe("cover.jpg");
+  expect(window.document.getElementById("cover-preview")!.innerHTML).toContain("<img");
+  window.close();
+});
+
+it("preserves the existing-case mode's picker selection and room name across a round trip through author mode", async () => {
+  const { window } = await loadCreateCaseDom("/rooms/new?mode=existing");
+  const select = window.document.getElementById("puzzleId") as HTMLSelectElement;
+  const realOption = [...select.options].find((o) => o.value !== "")!;
+  select.value = realOption.value;
+  select.dispatchEvent(new window.Event("change", { bubbles: true }));
+  (window.document.getElementById("name") as HTMLInputElement).value = "My Friday squad";
+
+  clickTab(window, "author");
+  await waitForMode(window, "author");
+  clickTab(window, "existing");
+  await waitForMode(window, "existing");
+
+  expect((window.document.getElementById("puzzleId") as HTMLSelectElement).value).toBe(realOption.value);
+  expect((window.document.getElementById("name") as HTMLInputElement).value).toBe("My Friday squad");
+  // The preview panel should reflect the restored selection, not the
+  // sealed state — proof the restored select's own "change" handler ran.
+  expect(window.document.getElementById("case-file-preview")!.textContent).not.toContain("Sealed case");
+  window.close();
+});
+
+it("the browser back button restores the previous mode without resubmitting anything", async () => {
+  const { window } = await loadCreateCaseDom("/rooms/new?mode=existing");
+  clickTab(window, "author");
+  await waitForMode(window, "author");
+  expect(window.location.href).toContain("mode=author");
+
+  window.history.back();
+  await waitForMode(window, "existing");
+  expect(window.location.href).toContain("mode=existing");
+  expect(window.location.pathname).toBe("/rooms/new");
+  window.close();
+});
+
+it("a rapid double-click on the same-mode tab (or the active tab) doesn't duplicate history entries or break the page", async () => {
+  const { window } = await loadCreateCaseDom("/rooms/new?mode=existing");
+  const lengthBefore = window.history.length;
+  clickTab(window, "author");
+  clickTab(window, "author");
+  clickTab(window, "author");
+  await waitForMode(window, "author");
+  expect(window.history.length).toBe(lengthBefore + 1);
+  expect(window.document.getElementById("title")).toBeTruthy();
+  window.close();
+});
+
+it("switching modes moves focus to the new mode's first real field, never to the hidden mode input", async () => {
+  const { window } = await loadCreateCaseDom("/rooms/new?mode=existing");
+  clickTab(window, "author");
+  await waitForMode(window, "author");
+  // Give focus() (called synchronously inside the switch) a turn to land —
+  // no animation to wait out, just the microtask/promise chain in switchTo().
+  await new Promise((resolve) => setTimeout(resolve, 20));
+  expect(window.document.activeElement?.id).toBe("cover");
+  window.close();
+});
+
+it("switches with no animation at all — the mode lands as soon as the fetch resolves, no artificial delay on top", async () => {
+  const { window } = await loadCreateCaseDom("/rooms/new?mode=existing");
+  const start = Date.now();
+  clickTab(window, "author");
+  await waitForMode(window, "author");
+  const elapsedMs = Date.now() - start;
+  // A removed earlier version of this transition held the swap back for a
+  // ~300ms flip animation regardless of how fast the fetch itself
+  // completed — this bounds the real elapsed time well under that, so a
+  // regression that reintroduces an artificial delay (not just a slow test
+  // machine) would fail this, not local fetch latency alone.
+  expect(elapsedMs).toBeLessThan(250);
   window.close();
 });

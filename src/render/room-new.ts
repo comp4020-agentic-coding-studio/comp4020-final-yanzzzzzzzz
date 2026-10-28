@@ -181,8 +181,10 @@ export function newRoomPage(args: {
     <section class="create-case">
       <h1 class="create-case-heading">Start a new case</h1>
       ${notice ? `<p class="notice" role="status">${escapeHtml(notice)}</p>` : ""}
-      ${tabsHtml(mode)}
-      ${mode === "existing" ? existingCaseFileHtml(puzzles, selectedPuzzleId) : authorCaseFileHtml()}
+      <div id="case-file-mode-root" data-mode="${mode}">
+        ${tabsHtml(mode)}
+        ${mode === "existing" ? existingCaseFileHtml(puzzles, selectedPuzzleId) : authorCaseFileHtml()}
+      </div>
     </section>
     <script src="${asset("/create-case.js")}"></script>
     `,

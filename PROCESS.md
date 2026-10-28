@@ -2183,3 +2183,80 @@ independently committed pass below.
 
 Commit: [`73c81d9`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-yanzzzzzzzz/commit/73c81d9).
 Local only, not pushed, per this session's explicit authorization.
+
+## Instant mode switching, after the user's own real-browser test rejected the flip animation
+
+The session's own plan, right after the cover-upload work above, was a
+"page-flip" transition between "Choose a case" and "Write your own" — a
+short `perspective`/`rotateY` CSS animation, swapped mid-animation, with a
+lighter slide/fade fallback on phone. That work was built, drafted into
+`public/create-case.js`/`public/styles.css`, and manually verified in
+`jsdom` (the swap itself, draft preservation, focus, back/forward — see
+below) before ever being committed.
+
+**The user then actually looked at it in a real browser** (the preview on
+port 8085) and gave direct feedback: the flip effect was "非常非常差" (very,
+very bad) and asked for it removed outright, overriding every earlier
+instruction asking for a flip/rotate/page-turn effect. This is recorded
+here as what happened, not reframed as something the user liked or asked
+to be tuned further — a real-browser check is exactly the kind of signal
+this app's own process discipline says to trust over a jsdom check that
+can confirm the DOM swap works correctly without ever confirming the
+animation reads as intended. jsdom has no rendering engine at all, so
+nothing in this session's own testing could have caught "this looks
+broken" before a human actually looked at it.
+
+**What was removed, specifically**: every `perspective`/`transform-style:
+preserve-3d`/`rotateY`/`translateX` rule, every `@keyframes` for the flip
+and its phone-slide fallback, the `.case-file-flip-perspective-host`
+wrapper div the 3D rotation needed a parent to establish perspective on,
+the `.case-file-flipping-out`/`-in` transition classes, and the
+`animationend`-driven two-phase swap timing in
+`create-case.js`. **What was kept, unchanged**: every piece of actual
+functionality the animation had been layered on top of — draft
+preservation (title/premise/solution/shared/room name/picker selection),
+the cover `<input>` DOM node surviving a mode switch with its chosen File
+intact, focus landing on the new mode's first real field, and
+back/forward restoring the correct mode without resubmitting anything. The
+mode switch is now a synchronous DOM swap: click → fetch → swap → restore
+draft → focus, with no animation, no transition classes, and no
+`setTimeout`/`animationend` machinery gating when any of that happens.
+
+**Verified mechanically** (this environment still has no real browser) via
+real `jsdom` + the REAL `public/create-case.js`, same harness pattern every
+other `spec/case-file.test.ts` test already uses: clicking a `.case-tabs`
+link swaps the mode and updates the URL via `pushState`; an in-progress
+author draft (title/premise/solution/shared/room name) survives switching
+away and back, including the derived submit-label state actually
+re-deriving (not just the checkbox's raw value surviving); a chosen cover
+file survives as the exact same `<input>` DOM node with its preview
+restored (not merely "a file still exists somewhere"); the existing-case
+mode's picker selection and room name round-trip through author mode;
+browser back restores the previous mode without resubmitting anything; a
+rapid triple-click settles on a single history entry and the correct end
+state; and switching never gates on an artificial delay — bounded well
+under what the removed animation alone used to take, so a regression that
+reintroduces a flip (or any other held-back transition) would fail this,
+not local fetch latency.
+
+**Test changes**: `spec/case-file.test.ts`'s former
+`"prefers-reduced-motion swaps the mode without waiting for an animation"`
+test (meaningless once there's no animation to reduce) was replaced with a
+focus-restoration check and a no-artificial-delay check — not left in
+place testing a code path that no longer exists, and not rewritten to
+pretend the animation removal never happened.
+
+**Verified**: `pnpm typecheck` and `pnpm build` clean. Full suite
+**113/113 across 19 files**, run three times consecutively against a
+freshly restarted, fully isolated server (port 8082, its own throwaway
+`.data-test-8082/` `DATA_DIR`) to confirm the timing-sensitive new tests
+aren't flaky — the first attempt at the no-artificial-delay test *was*
+flaky on a fixed 40ms sleep under load, root-caused (not retried blind)
+and fixed to poll for the actual DOM state instead of guessing a timeout.
+`pnpm run check:evidence` clean. The user's own preview processes on ports
+8081/8083/8084/8085 were confirmed still listening, untouched, before and
+after this pass. Port 8085 specifically carries the now-abandoned flip
+animation the user already saw and rejected — not this commit's own
+no-animation result, which Codex will preview fresh.
+
+Local only, not pushed, per this session's explicit authorization.
