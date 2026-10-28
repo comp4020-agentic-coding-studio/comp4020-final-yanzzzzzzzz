@@ -112,9 +112,14 @@ it("shows a not-started case card that flips to in-progress once the host starts
   const code = (create.headers.get("location") ?? "").split("/").pop() ?? "";
   const hostCookie = parseCookie(create.headers.getSetCookie());
 
+  // Slices to this card's own closing </li>, not a fixed character count —
+  // a long room/puzzle title (this shared test DB accumulates many across a
+  // session's runs) can otherwise push "Not started yet" past a fixed
+  // window with no actual bug involved.
   const before = await (await fetch(new URL("/", baseUrl))).text();
   const cardStart = before.indexOf(`data-code="${code}"`);
-  expect(before.slice(cardStart, cardStart + 400)).toContain("Not started yet");
+  const cardBeforeEnd = before.indexOf("</li>", cardStart);
+  expect(before.slice(cardStart, cardBeforeEnd)).toContain("Not started yet");
 
   await fetch(new URL(`/rooms/${code}/start`, baseUrl), {
     method: "POST",
@@ -124,7 +129,8 @@ it("shows a not-started case card that flips to in-progress once the host starts
 
   const after = await (await fetch(new URL("/", baseUrl))).text();
   const cardAfter = after.indexOf(`data-code="${code}"`);
-  expect(after.slice(cardAfter, cardAfter + 400)).toContain("In progress");
+  const cardAfterEnd = after.indexOf("</li>", cardAfter);
+  expect(after.slice(cardAfter, cardAfterEnd)).toContain("In progress");
 });
 
 it("only the host can start a case", async () => {
