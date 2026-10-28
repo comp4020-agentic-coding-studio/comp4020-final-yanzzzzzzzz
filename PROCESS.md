@@ -1743,3 +1743,102 @@ commit, on port 8083) is the next real visual check, not this session.
 
 Commit: [`72ad1b5`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-yanzzzzzzzz/commit/72ad1b5).
 Local only, not pushed, per this session's explicit authorization.
+
+## The hero-to-page seam: a real visual bug, not a caching artifact
+
+The user reviewed the restarted preview of the hero-declutter pass above and
+reported it still looked "abrupt" — Codex had independently already ruled
+out stale caching as the cause before this session saw the report. The
+concrete complaint: the hero was followed by one solid-blue, bordered
+`.join-strip` block, then a separately bordered `.below-hero-info` block,
+read as two disconnected colored toolbars stacked under the photo rather
+than one continuous page. This session's instruction was explicit not to
+re-explain caching or treat a margin tweak as sufficient — the fill color
+and borders themselves were the bug.
+
+Root cause, read directly from the CSS the prior commit shipped: `72ad1b5`
+moved the content warning and join form out of the hero (correctly, per
+that session's ask) but gave each new section its own visual identity —
+`.join-strip` had `background: var(--bg-raised)` plus a `border-bottom`,
+and `.below-hero-info` had its own `border-bottom` — so moving them out of
+the hero didn't make the page feel continuous, it just relocated the visual
+break one section down and added a second one next to it.
+
+**Fix**
+([`afc57d7`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-yanzzzzzzzz/commit/afc57d7)):
+
+- Stripped every `background`/`border`/`border-bottom` off both
+  `.below-hero-info` and `.join-strip` — both now sit directly on the
+  page's own `--bg`, with small consistent gaps between the warning, the
+  stat, and the join form instead of section-padding-plus-a-rule between
+  two differently-colored blocks. The two `<section>` elements stay
+  separate in the DOM (nothing in `spec/` or `public/*.js` needed them
+  merged, and `.join-form`'s own class is what the one existing test
+  asserts on), but visually and in source order they now read as one
+  uninterrupted passage: warning, then the real reasoning-time stat, then a
+  deliberately lower-weight join-by-code control — matching the exact order
+  requested.
+- The join-by-code control itself was restyled down in visual weight: a
+  ~40px input (`min-height: 2.5rem`, previously unconstrained) and a plain
+  bordered `.join-button` in `--fg-dim`, never gold — so the page still only
+  has two emphasized actions (the hero's own "Create a room" / "Explore
+  cases"), not three competing ones.
+- `.hero-overlay`'s bottom gradient changed from fading to a translucent
+  dark wash (`rgba(6, 8, 17, 0.55)` at its darkest, fading to transparent)
+  to fading all the way to the page's own flat `var(--bg)` — the hero's last
+  visible pixel row is now the literal same color as the section below it,
+  which is what actually removes a seam rather than just softening it. Both
+  the desktop and the existing `<=40rem` mobile gradient variant were
+  updated the same way.
+- `.hero`'s `min-height` dropped from `clamp(30rem, 86vh, 46rem)` — close to
+  full-viewport-height on most laptop screens — to `clamp(28rem, 55vh,
+  35rem)`, a restrained band in the 500-560px range on a typical desktop
+  window rather than a screen-filling block, per the explicit "hero should
+  not occupy the whole screen" instruction.
+- A shared `--gutter: clamp(1rem, 6vw, 6.25rem)` custom property replaces
+  both `main`'s own horizontal padding and `.hero-copy`'s separate, narrower
+  one. Previously the hero's text column inset less from the viewport edge
+  (effectively a flatter ~24-32px gutter via its own `clamp(1rem, 4vw,
+  2rem)`) than the sections below it; now the headline and "Featured cases"
+  below it share one left edge on a wide desktop, which is what "the hero
+  isn't just its own inconsistent column" actually requires — not a
+  coincidence of similar-looking numbers.
+- `.featured-cases`'s top padding was cut from `2rem` to `0.75rem`, since it
+  now directly follows `.join-strip`'s own bottom spacing with no dividing
+  rule between them anymore — keeping both at their old full padding would
+  have reintroduced a visually oversized gap immediately after closing the
+  gap above it.
+
+**Verified, not just reasoned through**: `pnpm typecheck` and `pnpm build`
+both clean. Full suite **79/79 across 17 files**, unchanged — nothing in
+this fix touches any class name or markup structure an existing spec
+asserts on beyond `.join-form`'s own tag, which this commit didn't rename.
+Run against a **freshly restarted** isolated local server (port 8082, its
+own throwaway `DATA_DIR`) — a restart was necessary here specifically
+because `home.ts`'s section order changed (the content-warning/stat section
+now renders before the join-form section, matching the requested display
+order), and a long-running Node process serving the old bundled module
+wouldn't reflect that without restarting it. After restarting, fetched the
+rendered homepage directly and confirmed the actual served section order is
+`below-hero-info` -> `join-strip` -> `featured-cases` (not just trusting the
+source diff), and fetched `/styles.css` directly to confirm the shipped
+bytes carry the new `--gutter` property and that neither `.below-hero-info`
+nor `.join-strip` has any `border`/`background` rule left in what's actually
+served. The user's own preview processes on ports 8081 and 8083 were never
+stopped, restarted, or touched at any point.
+
+**Not done in this pass, and not claimed as done**: an actual browser render
+check at any real viewport width — this environment still has no GUI
+browser, the same standing limitation recorded in every prior visual-pass
+entry in this file. Per this session's own instruction, Codex will restart
+its local preview (port 8083) once both this fix and the planned
+"open case file" creation-page rework are committed, specifically to avoid
+reviewing a mix of new CSS against old cached HTML or vice versa — that
+real-browser pass is explicitly deferred to after the next commit below,
+not treated as done here.
+
+Commit: [`afc57d7`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-yanzzzzzzzz/commit/afc57d7).
+Local only, not pushed, per this session's explicit authorization — the
+"open case file" room-creation redesign the user also asked for in the same
+message continues immediately below, in the same session, without resetting
+or discarding anything above.
