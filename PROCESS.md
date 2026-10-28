@@ -2180,3 +2180,6 @@ clean.
 case" and "Write your own," and the per-mode draft-preservation /
 browser-history behavior that transition requires — tracked as a separate,
 independently committed pass below.
+
+Commit: [`73c81d9`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-yanzzzzzzzz/commit/73c81d9).
+Local only, not pushed, per this session's explicit authorization.
