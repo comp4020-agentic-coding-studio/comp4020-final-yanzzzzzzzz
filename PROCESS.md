@@ -1954,3 +1954,90 @@ CSS/JS against stale cached HTML or vice versa.
 Commit: [`b6b091f`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-yanzzzzzzzz/commit/b6b091f).
 Local only, not pushed, per this session's explicit authorization.
 
+
+## Fixing the case-file's readability bug, and giving the two modes a real layout difference
+
+A real-browser check against this session's port-8083 preview (the one
+Codex restarted after `0979b40`) found a genuine bug the test suite never
+caught, since no existing test asserted color contrast: the room-settings
+panel (`.case-file-right`) kept the site-wide dark `--bg-raised` background
+while its own CSS still set `--paper-ink` (a near-black ink tone meant for
+the *light* `--paper` surface) as its inherited text color — dark text on
+a dark background. "Pick a case" and "Room name" were legitimately close to
+unreadable, exactly as reported.
+
+**Root cause, not a patch**: the two visual halves (`.case-file-left` /
+`.case-file-right`) had never shared one styling rule — the left half
+("story") got its own paper-colored input overrides; the right half
+("settings") didn't, and had been left on the dark theme's default
+`--bg-raised`/`--fg` instead. Fixed by merging both into one
+`.case-file-panel` class carrying the shared paper surface, paper-ink text,
+and paper-colored form-control rules — so there is now exactly one place
+background/text/input colors for this form are set, not two copies that can
+drift apart again. No `!important` anywhere in the fix; every override
+works by being a more specific selector than the site-wide `input[type=
+"text"], select, textarea` rule, same specificity mechanism the original
+(broken) `.case-file-left input` rule already used — the bug was that half
+the panel never got an equivalent rule, not that specificity itself was the
+problem.
+
+**Contrast, checked, not eyeballed**: computed WCAG contrast ratios by hand
+(a small throwaway Node/WCAG-formula script, not a guess) for every
+foreground/background pairing actually used on this page against `--paper`
+or the cover-sealed tint: `.case-file-hint` and `.case-file-back-link`
+previously inherited `--accent-bright` (tuned for the dark navy body,
+~1.15:1 on paper) — recolored to a `color-mix(accent 30%, paper-ink 70%)`
+formula that lands at 5.76:1; the decorative `.case-file-seal` glyph bumped
+from 45%-ink (2.42:1 against its own tinted panel) to 80%-ink (5.72:1). The
+inactive case-tab's own background/text pairing was computed too (5.3:1)
+before it shipped, not left to visual inspection.
+
+**Layout now actually differs between modes, not just CSS order**: renamed
+`.case-file-left`/`.case-file-right` to semantic `.case-file-settings` /
+`.case-file-preview` (existing-case mode) and `.case-file-fields` /
+`.case-file-settings` (author mode) under a shared `.case-file-panel`
+base class, and reordered the DOM so existing-case mode puts the settings
+panel (pick a case, room name, submit) FIRST and the read-only cover/title/
+premise preview SECOND — "decide, then see what you got" — while author
+mode keeps its content-authoring panel (cover glyph, title, premise) FIRST
+and its settings panel (solution, share checkbox, room name, submit)
+SECOND, since writing the case IS the primary task there. This was a DOM
+reorder, not a `order:` CSS trick, so the single-column mobile layout
+(which drops the grid entirely below `54rem`) gets the right reading order
+for free in both modes without a media query having to re-sequence
+anything. `spec/case-file.test.ts`'s two `#case-file-left`-id assertions
+were updated to the new `#case-file-preview` id (same assertions, same
+behavior under test — the swap panel's own identity, not its name).
+
+**Tab/container restyle, root-caused not re-skinned**: removed
+`.case-file-desk`, the separate dark bordered/textured box the tabs and
+file previously sat inside — it was an extra "desk" surface on top of the
+file's own paper surface, which is what made the file read as floating
+inside an unrelated panel rather than being the document itself. The
+file's own `.case-file-form` background is now the only surface; its
+top-left corner is square (`border-radius: 0 0.5rem 0.5rem 0.5rem`) so the
+tabs can visually attach there. The two tabs are now paper-toned
+(`color-mix(paper 70%, bg-sunken 30%)` inactive, flat `--paper` active)
+rather than the dark theme's navy, so the active tab and the file below it
+read as one continuous sheet (shared background color, shared radius, the
+active tab's own shadow removed so there's no seam) while the inactive tab
+keeps a small drop shadow to read as a separate flap sitting proud of the
+page, not another floating pill disconnected from the file.
+
+**Verified**: `pnpm typecheck` and `pnpm build` both clean. Full suite
+**92/92 across 18 files**, unchanged test count — the two `#case-file-left`
+references were renamed in place, no test weakened or removed — run against
+a freshly restarted, fully isolated server (port 8082, its own throwaway
+`.data-test-8082/` `DATA_DIR`, `ALLOW_MOCK_JUDGE=1`), confirmed not to
+collide with the user's own port-8081/8083 preview processes (both still
+running, untouched, throughout). Contrast ratios for every repainted
+color pair were computed with the real sRGB→WCAG-relative-luminance
+formula against the real hex values in `styles.css`, not estimated by eye.
+Manually fetched both `/rooms/new?mode=existing` and `?mode=author` after
+the change and confirmed by inspecting the raw HTML that the settings panel
+renders first in existing mode and the content panel renders first in
+author mode (the DOM-order claim above, not just a visual claim).
+
+**Not done in this pass**: the page-flip transition and cover-upload work
+the same session also asked for — tracked as separate, independently
+committed passes below, per the user's own "readability first" ordering.

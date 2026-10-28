@@ -171,7 +171,7 @@ it("selecting a real case in the picker swaps the left page to that case's real 
   select.dispatchEvent(new window.Event("change", { bubbles: true }));
   await new Promise((resolve) => setTimeout(resolve, 20));
 
-  const left = window.document.getElementById("case-file-left")!;
+  const left = window.document.getElementById("case-file-preview")!;
   expect(left.textContent).not.toContain("Sealed case");
   expect(left.innerHTML).toContain("<img");
   window.close();
@@ -189,7 +189,7 @@ it("switching back to 'Surprise me' restores the sealed state, not a stale picke
   select.dispatchEvent(new window.Event("change", { bubbles: true }));
   await new Promise((resolve) => setTimeout(resolve, 20));
 
-  const left = window.document.getElementById("case-file-left")!;
+  const left = window.document.getElementById("case-file-preview")!;
   expect(left.textContent).toContain("Sealed case");
   expect(left.textContent).toContain("Let fate choose your mystery");
   window.close();

@@ -2,8 +2,8 @@
 // no JS — a case is either the one the server preselected via ?puzzleId= (or
 // the sealed "Surprise me" state), or whatever's typed into the author
 // fields, and submitting works with zero script. This only adds a live
-// cover/title/premise swap on the left "page" when the <select> changes, and
-// a cosmetic submit-label swap in author mode — neither is load-bearing.
+// cover/title/premise swap on the preview panel when the <select> changes,
+// and a cosmetic submit-label swap in author mode — neither is load-bearing.
 (() => {
   // Mirrors src/render/covers.ts's STABLE_COVERS exactly (slug -> dedicated
   // cover; everything else falls back to the shared archive cover). Kept in
@@ -26,7 +26,7 @@
   }
 
   const select = document.getElementById("puzzleId");
-  const leftPage = document.getElementById("case-file-left");
+  const leftPage = document.getElementById("case-file-preview");
   const dataEl = document.getElementById("puzzle-data");
   if (select && leftPage && dataEl) {
     const puzzles = JSON.parse(dataEl.textContent);
@@ -57,19 +57,19 @@
       `;
     }
 
-    // One short fade on the left page's contents when the selection changes
-    // — not the full ~450ms folder-opening entrance (that only plays once,
-    // on first load, via the .case-file-desk animation in CSS), and off
-    // entirely under prefers-reduced-motion via the same CSS rule that
+    // One short fade on the preview panel's contents when the selection
+    // changes — not the full ~450ms page-opening entrance (that only plays
+    // once, on first load, via the .case-file-panel animation in CSS), and
+    // off entirely under prefers-reduced-motion via the same CSS rule that
     // already guards every other animation on this page.
     select.addEventListener("change", () => {
       const puzzle = puzzles.find((p) => p.id === select.value);
-      leftPage.classList.remove("case-file-left-swap");
+      leftPage.classList.remove("case-file-preview-swap");
       // Force reflow so re-adding the class restarts the animation even if
       // the select is changed twice in a row before the first fade finishes.
       void leftPage.offsetWidth;
       leftPage.innerHTML = puzzle ? puzzleHtml(puzzle) : sealedHtml();
-      leftPage.classList.add("case-file-left-swap");
+      leftPage.classList.add("case-file-preview-swap");
     });
   }
 

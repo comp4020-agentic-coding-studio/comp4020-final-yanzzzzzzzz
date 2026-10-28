@@ -30,8 +30,8 @@ function tabsHtml(mode: "existing" | "author"): string {
 // here (even styled as a guess) would be showing a specific story as if it
 // were already decided, which it isn't. A player who wants to see what
 // they're committing to has "Choose a case" right next to this tab.
-function sealedCaseLeftPage(): string {
-  return `<div class="case-file-left" id="case-file-left">
+function sealedCasePreview(): string {
+  return `<div class="case-file-panel case-file-preview" id="case-file-preview">
     <div class="case-file-cover case-file-cover-sealed" aria-hidden="true">
       <span class="case-file-seal">?</span>
     </div>
@@ -44,9 +44,9 @@ function sealedCaseLeftPage(): string {
   </div>`;
 }
 
-function puzzleLeftPage(puzzle: PuzzleOption): string {
+function puzzleCasePreview(puzzle: PuzzleOption): string {
   const by = puzzle.authorLabel ? `Player-created, by ${escapeHtml(puzzle.authorLabel)}` : "Official case";
-  return `<div class="case-file-left" id="case-file-left">
+  return `<div class="case-file-panel case-file-preview" id="case-file-preview">
     <div class="case-file-cover">
       <img src="${coverFor(puzzle.slug)}" alt="" width="800" height="500" decoding="async" />
     </div>
@@ -56,6 +56,12 @@ function puzzleLeftPage(puzzle: PuzzleOption): string {
   </div>`;
 }
 
+// Existing-case mode reads left-to-right (and, on a single-column phone, top
+// to bottom) as "pick a case and name your room" THEN "here's what you
+// picked" — the decision comes before its confirmation, so the settings
+// panel is first in the DOM/visually-left, the read-only preview second/
+// visually-right. Author mode (below) reverses that: writing the case IS
+// the primary task, so its content panel comes first.
 function existingCaseFileHtml(puzzles: PuzzleOption[], selectedPuzzleId?: string): string {
   const selected = selectedPuzzleId ? puzzles.find((p) => p.id === selectedPuzzleId) : undefined;
   const options = puzzles
@@ -73,11 +79,10 @@ function existingCaseFileHtml(puzzles: PuzzleOption[], selectedPuzzleId?: string
   // markup is ever rendered per request.
   return `<form method="post" action="/rooms" id="create-form" class="case-file-form">
     <input type="hidden" name="mode" value="existing" />
-    ${selected ? puzzleLeftPage(selected) : sealedCaseLeftPage()}
 
-    <div class="case-file-right">
+    <div class="case-file-panel case-file-settings">
       <h1 class="case-file-room-heading">Investigation room</h1>
-      <p class="case-file-right-blurb">
+      <p class="case-file-settings-blurb">
         Anyone with this room's code can walk in and read the case file —
         questions only start once you, as host, open the investigation.
       </p>
@@ -94,6 +99,8 @@ function existingCaseFileHtml(puzzles: PuzzleOption[], selectedPuzzleId?: string
       <button type="submit" class="button-link case-file-submit">Create investigation room</button>
       <a href="/cases" class="case-file-back-link">Back to the case library</a>
     </div>
+
+    ${selected ? puzzleCasePreview(selected) : sealedCasePreview()}
   </form>
   <script id="puzzle-data" type="application/json">${JSON.stringify(
     puzzles.map((p) => ({ id: p.id, slug: p.slug, title: p.title, premise: p.premise, authorLabel: p.authorLabel })),
@@ -101,14 +108,15 @@ function existingCaseFileHtml(puzzles: PuzzleOption[], selectedPuzzleId?: string
 }
 
 function authorCaseFileHtml(): string {
-  // The left page carries only what a player would eventually see (title,
-  // premise) — the solution lives on the right page, explicitly labelled
-  // hidden-until-solved, so the "sealed until solved" rule the rest of the
-  // app enforces server-side is also true of this page's own layout: nothing
-  // about to be secret sits on the side styled as the public-facing cover.
+  // The content panel carries only what a player would eventually see
+  // (title, premise) — the solution lives in the settings panel, explicitly
+  // labelled hidden-until-solved, so the "sealed until solved" rule the rest
+  // of the app enforces server-side is also true of this page's own layout:
+  // nothing about to be secret sits in the panel styled as the public-facing
+  // case content.
   return `<form method="post" action="/rooms" id="create-form" class="case-file-form">
     <input type="hidden" name="mode" value="author" />
-    <div class="case-file-left">
+    <div class="case-file-panel case-file-fields">
       <div class="case-file-cover case-file-cover-author" aria-hidden="true">
         <span class="case-file-seal">✎</span>
       </div>
@@ -120,7 +128,7 @@ function authorCaseFileHtml(): string {
       <textarea id="premise" name="premise" maxlength="1000" required rows="5" placeholder="A short, strange scene with no explanation attached."></textarea>
     </div>
 
-    <div class="case-file-right">
+    <div class="case-file-panel case-file-settings">
       <h1 class="case-file-room-heading">Investigation room</h1>
 
       <label for="solution">Solution <span class="case-file-hint">(hidden until solved)</span></label>
@@ -155,9 +163,7 @@ export function newRoomPage(args: {
       <h1 class="create-case-heading">Start a new case</h1>
       ${notice ? `<p class="notice" role="status">${escapeHtml(notice)}</p>` : ""}
       ${tabsHtml(mode)}
-      <div class="case-file-desk">
-        ${mode === "existing" ? existingCaseFileHtml(puzzles, selectedPuzzleId) : authorCaseFileHtml()}
-      </div>
+      ${mode === "existing" ? existingCaseFileHtml(puzzles, selectedPuzzleId) : authorCaseFileHtml()}
     </section>
     <script src="${asset("/create-case.js")}"></script>
     `,

@@ -1209,21 +1209,28 @@ textarea:focus-visible {
   color: var(--fg-dim);
 }
 
-/* ---------- Create-case: "a case file open on the desk" ----------
-   /rooms/new is styled as an open manila folder sitting on the same dark
-   investigation desk as the homepage hero, not a flat form. A visible
+/* ---------- Create-case: "an open case file" ----------
+   /rooms/new is styled as an open case file, not a flat form: the folder's
+   own paper IS the container (no separate dark "desk" box framing it — a
+   prior pass had one, with a thick border and a diagonal hairline
+   background, and it made the file look like it was floating inside a
+   second, unrelated panel rather than being the object itself). A visible
    heading stays in the DOM (keyboard/no-CSS/no-JS users still get it, and
-   screen readers announce it) even though the folder's own left/right
-   "pages" make a separate bordered <h1> visually redundant on top of them. */
+   screen readers announce it) even though the folder's own panels make a
+   separate bordered <h1> visually redundant on top of them. */
 
 .create-case-heading {
   margin: 0 0 1rem;
 }
 
-/* The folder's own pair of tabs sit above the desk spread, styled like two
-   manila tab labels rather than the plain underlined-link tabs used
-   elsewhere (.faq-item, .case-source-filter), to read as part of the
-   folder object rather than a generic page nav. */
+/* The folder's own pair of tabs sit directly on the page background, flush
+   against the file's top-left edge — paper-colored index tabs attached to
+   the file itself, not plain links sitting inside a second boxed nav. The
+   active tab is the exact same --paper tone as the file below it and shares
+   its border-radius/shadow, so the two visually fuse into one continuous
+   sheet; the inactive tab is a visibly separate, slightly receding paper
+   tone (not the dark theme's navy) with its own soft drop shadow, reading
+   as a flap sitting proud of the page rather than a floating pill. */
 .case-tabs {
   display: flex;
   gap: 0.35rem;
@@ -1236,48 +1243,37 @@ textarea:focus-visible {
   padding: 0.6rem 1.1rem;
   border: 1px solid var(--gold-line);
   border-bottom: none;
-  border-radius: 0.5rem 0.5rem 0 0;
-  background: var(--bg-sunken);
-  color: var(--fg-dim);
+  border-radius: 0.6rem 0.6rem 0 0;
+  background: color-mix(in srgb, var(--paper) 70%, var(--bg-sunken) 30%);
+  color: var(--paper-ink);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.25);
 }
 
 .case-tabs a.active {
-  background: var(--bg-raised);
-  color: var(--accent-bright);
+  background: var(--paper);
+  color: var(--paper-ink);
   font-weight: 600;
-  border-color: var(--gold-line);
+  box-shadow: none;
 }
 
-/* The desk itself: a dark, faintly textured surface framing the folder, so
-   the folder reads as an object sitting on the same investigation desk the
-   homepage hero photo shows, not a flat page background. The texture is a
-   CSS-only diagonal hairline pattern (no image request) at very low
-   opacity — a desk grain hint, not a busy pattern fighting the form. */
-.case-file-desk {
-  padding: clamp(1.25rem, 4vw, 2.5rem);
-  border-radius: 0 0.5rem 0.5rem 0.5rem;
-  background: var(--bg-sunken) repeating-linear-gradient(
-    135deg,
-    rgba(236, 231, 217, 0.015) 0px,
-    rgba(236, 231, 217, 0.015) 1px,
-    transparent 1px,
-    transparent 6px
-  );
-  border: 1px solid var(--gold-line);
-}
-
-/* The folder itself: an old-paper two-page spread. A single <form> spans
-   both "pages" (one POST, one set of field ids) laid out as a CSS grid
-   rather than two separate documents. A visible center seam (a thin
-   gradient + box-shadow pair) stands in for a binding without needing a
-   background image. */
+/* The folder itself: an old-paper spread, its own paper color and ink text
+   the ONE surface color every panel below shares — a prior version gave the
+   settings panel its own dark navy background while this element still set
+   dark ink as the inherited text color, which made every label/heading on
+   that panel nearly unreadable (dark-on-dark). Keeping a single paper
+   surface for both panels is the root fix, not a per-panel color patch. A
+   single <form> spans both panels (one POST, one set of field ids) laid out
+   as a CSS grid rather than two separate documents. A visible center seam
+   (a thin gradient + box-shadow pair) stands in for a binding without
+   needing a background image. Square top-left corner matches the tabs
+   attaching there; every other corner stays rounded. */
 .case-file-form {
   display: grid;
   grid-template-columns: 1fr;
   gap: 1.5rem;
   background: var(--paper);
   color: var(--paper-ink);
-  border-radius: 0.4rem;
+  border-radius: 0 0.5rem 0.5rem 0.5rem;
   box-shadow: 0 1.5rem 3rem rgba(0, 0, 0, 0.45);
   overflow: hidden;
 }
@@ -1317,10 +1313,10 @@ textarea:focus-visible {
    HTML regardless of whether this animation runs — nothing starts at
    opacity 0 without JS or with the media query turned off. */
 @media (prefers-reduced-motion: no-preference) {
-  .case-file-left {
+  .case-file-panel:first-child {
     animation: case-file-page-in 0.45s ease-out both;
   }
-  .case-file-right {
+  .case-file-panel:last-child {
     animation: case-file-page-in 0.45s ease-out 0.08s both;
   }
 }
@@ -1340,7 +1336,7 @@ textarea:focus-visible {
    the one-time entrance above — short, and only restyles already-present
    markup the JS just replaced, never used to hide no-JS content. */
 @media (prefers-reduced-motion: no-preference) {
-  .case-file-left-swap {
+  .case-file-preview-swap {
     animation: case-file-fade 0.25s ease-out;
   }
 }
@@ -1354,12 +1350,18 @@ textarea:focus-visible {
   }
 }
 
-.case-file-left,
-.case-file-right {
+/* Both panels (the read/write case content and the room settings) are
+   plain paper — same --paper background, same --paper-ink text color — so
+   neither one needs its own color overrides to stay readable. The previous
+   version gave only one panel (.case-file-left) explicit paper-colored
+   inputs and left the other (.case-file-right) on the site's dark
+   --bg-raised surface while still inheriting --paper-ink as its text
+   color — dark text on a dark background. Scoping every rule below to the
+   shared `.case-file-panel` class, instead of two separately-named halves
+   that each needed their own copy of the same rules, is what makes that
+   class of bug impossible to reintroduce by only updating one side. */
+.case-file-panel {
   padding: clamp(1.25rem, 4vw, 2rem);
-}
-
-.case-file-left {
   display: flex;
   flex-direction: column;
   gap: 0.6rem;
@@ -1395,9 +1397,13 @@ textarea:focus-visible {
 .case-file-seal {
   font-family: Georgia, serif;
   font-size: 2.5rem;
-  color: color-mix(in srgb, var(--paper-ink) 45%, transparent);
+  color: color-mix(in srgb, var(--paper-ink) 80%, transparent);
 }
 
+/* 65%-opacity ink only ever sat on --paper before (4.75:1, already AA for
+   this size) — the regression was .case-file-right's dark background, not
+   this color itself, so it's unchanged here, just now guaranteed to only
+   ever render on the one paper surface both panels share. */
 .case-file-source {
   margin: 0;
   font-size: 0.8rem;
@@ -1426,41 +1432,65 @@ textarea:focus-visible {
   margin-top: 0.4rem;
 }
 
-.case-file-left label,
-.case-file-left input,
-.case-file-left textarea {
+.case-file-panel label,
+.case-file-panel input,
+.case-file-panel textarea,
+.case-file-panel select {
   font: inherit;
 }
 
-.case-file-left input,
-.case-file-left textarea {
-  background: color-mix(in srgb, var(--paper) 92%, var(--paper-ink));
-  border-color: rgba(11, 14, 26, 0.25);
+.case-file-panel label {
   color: var(--paper-ink);
 }
 
-.case-file-right {
-  display: flex;
-  flex-direction: column;
-  gap: 0.75rem;
-  background: var(--bg-raised);
+/* `select`'s own site-wide rule (line ~235) sets --bg-raised/--fg — correct
+   everywhere else on the dark theme, but exactly the same dark-on-dark trap
+   .case-file-right's background was: unreadable on paper. Overriding it
+   here, scoped to this one panel, is the fix — not an !important on top of
+   the site-wide rule, just a more specific selector for the one place paper
+   needs a paper-colored control. */
+.case-file-panel input[type="text"],
+.case-file-panel textarea,
+.case-file-panel select {
+  background: color-mix(in srgb, var(--paper) 92%, var(--paper-ink));
+  border-color: rgba(11, 14, 26, 0.3);
+  color: var(--paper-ink);
+}
+
+.case-file-panel input[type="text"]::placeholder,
+.case-file-panel textarea::placeholder {
+  color: color-mix(in srgb, var(--paper-ink) 55%, transparent);
+}
+
+.case-file-panel input:focus-visible,
+.case-file-panel select:focus-visible,
+.case-file-panel textarea:focus-visible {
+  outline-color: color-mix(in srgb, var(--accent) 70%, var(--paper-ink) 30%);
 }
 
 .case-file-room-heading {
   margin: 0;
   font-size: 1.15rem;
+  color: var(--paper-ink);
 }
 
-.case-file-right-blurb {
+.case-file-settings-blurb {
   margin: 0 0 0.25rem;
   font-size: 0.9rem;
-  color: var(--fg-dim);
+  color: color-mix(in srgb, var(--paper-ink) 80%, transparent);
 }
 
+/* --fg-faint (50%-alpha pale cream) read fine on the old dark .case-file-
+   right background, but is nearly invisible on paper — this is the mix
+   that stood in for --accent-bright on the dark theme (gold readable at low
+   alpha against navy; gold itself barely reaches 1.5:1 against this warm
+   paper, per manual contrast check), scaled up to a dark enough mix of
+   --accent into --paper-ink that it clears 4.5:1 while still reading as
+   "gold emphasis," not plain body ink. */
 .case-file-hint {
   font-weight: 400;
   font-size: 0.85rem;
-  color: var(--fg-faint);
+  color: color-mix(in srgb, var(--accent) 30%, var(--paper-ink) 70%);
 }
 
 .case-file-submit {
@@ -1471,9 +1501,16 @@ textarea:focus-visible {
   font: inherit;
 }
 
+/* The site-wide `a` rule sets --accent-bright (gold) text, tuned for the
+   dark navy body background — on --paper it's barely 1.15:1, read against
+   manually. A darker mix of the same accent into --paper-ink (the same
+   formula .case-file-hint uses) keeps this an obviously gold/accent link
+   rather than falling back to plain body ink, while actually meeting
+   contrast on the surface it's really rendered on. */
 .case-file-back-link {
   text-align: center;
   font-size: 0.9rem;
+  color: color-mix(in srgb, var(--accent) 30%, var(--paper-ink) 70%);
 }
 
 @media (max-width: 54rem) {
