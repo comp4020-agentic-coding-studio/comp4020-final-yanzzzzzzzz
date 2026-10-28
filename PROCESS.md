@@ -1420,3 +1420,66 @@ preview, same caveat as every prior visual-only pass in this file.
   branch only, per this session's explicit, narrower-than-usual
   authorization. The next session (or the user directly) still needs to
   decide when to push and redeploy.
+
+*(Update from the next session: all six commits above were pushed to
+`origin/main` — HEAD at [`1420f4d`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-yanzzzzzzzz/commit/1420f4d)
+— and deployed to the live Fly app. Production was backed up first with
+`node:sqlite`'s real `backup()` API to
+`/data/app-before-community-1793160826209.db`, verified with
+`PRAGMA integrity_check` returning `ok` and matching row counts (2 rooms,
+9 qa_entries) before the deploy touched anything. Post-deploy, `/community`,
+`/music.js`, and `/audio/creepy-ambient.ogg` all returned 200 live, and the
+music toggle's on/off click was confirmed working. No production data was
+reset. See the next section for a stale-asset-cache bug found right after
+this deploy and its fix.)*
+
+## Cache-busting first-party static assets, found right after the nav/community deploy
+
+Right after the deploy above, a real browser session that had the app open
+from *before* the nav rework still showed the old centered-nav layout and
+the old gold `<button>` styling on the music toggle — looking exactly like
+the CSS rules for `.site-header-left`/`.music-toggle` had never shipped.
+Root-caused before touching any code: reading `document.styleSheets` in
+that same real browser showed its loaded `/styles.css` had no
+`.site-header-left` or `.music-toggle` rules at all, but a plain HTTP
+request for `/styles.css` against the same live URL (bypassing the
+browser's cache) returned the current 16945-byte file with both rules
+present. That rules out a missing-rule regression in the stylesheet itself
+— the bug was a browser serving its own stale cached copy of the
+*previous* deploy's `/styles.css` because the URL never changed between
+deploys, not anything wrong with the new CSS.
+
+Fixed by adding `src/render/asset.ts`: a single `RELEASE` constant
+(`20261028-nav-community-1`) appended as a `?v=` query string to every
+first-party `<link>`/`<script>` URL rendered by the layout and page
+templates — `/styles.css`, `/music.js`, `/lobby.js`, `/client.js`,
+`/create-case.js`. A new deploy that bumps `RELEASE` serves its assets from
+a URL a browser has never cached, without pulling in a bundler, a service
+worker, or any external dependency — this repo has no build step for
+`public/` assets to hash, so a hand-bumped release string is the simplest
+thing that actually fixes the bug within the existing stack. Commit:
+[`a6ece0c`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-yanzzzzzzzz/commit/a6ece0c).
+
+`spec/music.test.ts`'s exact-string assertion on
+`<script src="/music.js">` no longer matches once the URL carries a query
+string, so it was updated to a regex (`/<script src="\/music\.js\?v=[^"]+">/`)
+that still requires the same script tag to exist — not weakened, just
+adjusted for the now-versioned URL, per this repo's own rule against
+loosening assertions to make a change land.
+
+**Verified**: `pnpm typecheck` and `pnpm build` clean. Full suite run
+(72/72 across 16 files) against a freshly started, fully isolated server
+on port 8082 — its own `DATA_DIR` and `ALLOW_MOCK_JUDGE=1`, matching
+`APP_URL` — left running throughout this check and torn down afterward;
+the existing preview on port 8083 was identified by its actual listening
+process (`ss -tlnp`) and never touched. Then deployed with
+`mise exec -- flyctl deploy --remote-only --ha=false -a
+comp4020-final-yanzzzzzzzz` (no new backup needed — this change touches
+only static asset URLs, not the database or its schema). Verified against
+the live deploy directly: the homepage's rendered `<link>`/`<script>` tags
+all carry `?v=20261028-nav-community-1`, every one of those versioned URLs
+returns 200, `/community` and `/audio/creepy-ambient.ogg` still return 200,
+and the production `/styles.css` served at that versioned URL was fetched
+and confirmed to actually contain both `.site-header-left` and
+`.music-toggle` — the fix closes the loop a browser's cache was breaking,
+rather than just asserting the deploy succeeded.
