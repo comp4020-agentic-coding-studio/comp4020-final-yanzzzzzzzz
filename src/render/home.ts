@@ -98,18 +98,24 @@ function faqHtml(): string {
       "The room flips to solved for everyone watching, live, and shows the full solution plus a short recap — how many questions it took, how many people were there, and how long it took.",
     ],
   ];
+  // Each question is its own <details>, not one button gating the whole
+  // section — collapsed by default, independently openable, and fully
+  // keyboard/no-JS usable since <details>/<summary> is native browser
+  // behavior (Enter/Space on a focused <summary> toggles it) with no script
+  // required. The plus/minus glyph is a plain ::before indicator driven by
+  // the browser's own [open] attribute, not JS-tracked state.
   return `<section class="faq">
     <h2>FAQ</h2>
-    <dl>
+    <div class="faq-list">
       ${items
         .map(
-          ([q, a]) => `<div class="faq-item">
-        <dt>${escapeHtml(q)}</dt>
-        <dd>${escapeHtml(a)}</dd>
-      </div>`,
+          ([q, a]) => `<details class="faq-item">
+        <summary>${escapeHtml(q)}</summary>
+        <p>${escapeHtml(a)}</p>
+      </details>`,
         )
         .join("\n")}
-    </dl>
+    </div>
   </section>`;
 }
 
