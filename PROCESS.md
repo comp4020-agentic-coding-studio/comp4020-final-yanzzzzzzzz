@@ -1483,3 +1483,142 @@ and the production `/styles.css` served at that versioned URL was fetched
 and confirmed to actually contain both `.site-header-left` and
 `.music-toggle` — the fix closes the loop a browser's cache was breaking,
 rather than just asserting the deploy succeeded.
+
+## A visual rework: the "mystery investigation club / case archive" pass
+
+This session's instruction was explicit and pointed: the user said the app
+looked like an unstyled prototype — no real imagery, no animation, unclear
+information hierarchy — and asked for a precise identity ("墨蓝/炭黑基底,
+雾白正文, 旧纸/暗金细节, 暖琥珀主按钮" — ink navy/charcoal base, misty-white
+body text, old-paper/dark-gold detail, warm amber primary buttons) applied to
+the homepage and case library first, reviewed locally, before touching
+rooms/community. Also explicit: **local changes, local tests, commits only —
+no push, no deploy**, overriding this file's own "push every commit
+immediately" rule for the duration of this session, the same kind of
+narrower, session-scoped authorization recorded in the nav/community pass
+above. Every commit below sits on local `main`, unpushed, by instruction.
+
+### Real, AI-generated original photography, not placeholder art
+
+The user was explicit that a second agent (Codex, running in parallel in a
+different workspace) was generating original bitmap art with its own
+image_gen tool specifically so this pass wouldn't fall back to inline-SVG
+soup bowls or emoji as "hero art" — a repeat of the Phase 1 visual pass
+earlier in this file, which the user was now asking to move past. Four
+images were generated outside this repo (a cinematic hero photograph of a
+lamplit detective's desk with a steaming bowl, plus three per-puzzle
+scene photos) and handed over via a path outside this repo that the
+session's launcher explicitly authorized reading from (not a URL, not a
+hotlink).
+
+[`42fa12c`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-yanzzzzzzzz/commit/42fa12c)
+adds `scripts/process-images.mjs` (using `sharp`, added as a devDependency
+since no `cwebp`/`avifenc`/ImageMagick binary existed in this sandbox) to
+turn whatever full-resolution source PNGs exist in a given directory into
+the small `.webp` derivatives the site actually serves — a responsive
+640/1200/1600w set for the hero, one shared "case archive" cover (a second
+crop of the same hero photo), and three dedicated covers for the puzzles
+stable enough to deserve one. Only the compressed outputs are committed; the
+multi-megabyte source PNGs stay outside the repo entirely, which matters
+directly for a 256MB single Fly machine. `ASSET_LICENSES.md` records the
+generation tool, date, an explicit originality/no-CC0-claim statement (no
+such license applies to AI-generated output, and this repo doesn't pretend
+otherwise), the exact prompts used, and the slug→cover mapping — written at
+the time, not reconstructed afterward.
+
+### The rework itself
+
+[`368f2e6`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-yanzzzzzzzz/commit/368f2e6)
+is the core change. Two real decisions worth recording beyond what the
+commit message already covers in full:
+
+- **The theme is not gated behind `prefers-color-scheme`.** The instruction
+  was explicit that the immersive theme must be the default presentation,
+  not something a light-mode system preference silently reverts to a beige
+  page. `public/styles.css`'s four custom properties (`--fg`/`--bg`/
+  `--accent`/`--border`) — the same four every component across the whole
+  app has consumed since the very first theme pass — change value but not
+  name or gating, so room/profile/community/create-case all repaint under
+  the new dark palette automatically, with zero changes needed outside this
+  pass's actual scope (homepage + case library).
+- **Cover art is matched by slug, never by title text.** The three puzzles
+  that got a dedicated photo commission are matched in
+  `src/render/covers.ts` by each puzzle's stable `slug` column (the same
+  identity `reconcileSeedPuzzles()` already built and relies on for safe
+  English/Chinese reconciliation, documented earlier in this file) —
+  specifically so a future rewording of "The Elevator Routine"'s title
+  doesn't silently fall back to the generic archive cover. Every other case
+  (five built-ins with no dedicated commission, any player-authored shared
+  puzzle) uses the shared archive cover — real, original photography either
+  way, never an emoji or a broken `<img>`.
+
+**Verified**: `pnpm typecheck` and `pnpm build` clean; full suite (79/79
+across 17 files, including a new `spec/mystery-theme.test.ts` covering real,
+checkable claims — every referenced image URL actually resolves 200, the
+hero is eager/`fetchpriority="high"` while card covers are lazy with
+explicit dimensions, the slug→cover mapping, the case-library source filter
+actually filtering rather than just relabeling, the homepage/case-library
+rendering their real CTAs and content with zero JS executed, a
+`prefers-reduced-motion` guard on every new animation, and no fabricated
+rating/difficulty text) against an isolated local server, never the course's
+own 8080/8081/8083 preview processes.
+
+[`1d4850e`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-yanzzzzzzzz/commit/1d4850e)
+is a one-line follow-up: the hero's full-bleed `width: 100vw` technique can
+read a few pixels wider than the viewport on a desktop browser with a
+non-overlay scrollbar (100vw includes the scrollbar's own width), producing
+a faint horizontal scroll on the whole page — `overflow-x: hidden` on `body`
+is the standard, narrow fix for exactly that interaction.
+
+### A real flake, found from repeatedly re-running the suite, not invented
+
+Manually re-running the full suite many times against the same long-lived
+local dev server (deliberately never restarted between checks, to catch
+regressions fast) surfaced two distinct, previously-latent problems —
+recorded in
+[`632d2d0`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-yanzzzzzzzz/commit/632d2d0)
+rather than silently worked around by retrying until green, per this file's
+own standing rule:
+
+1. A real regression from this pass's own markup: `spec/rooms.test.ts`
+   sliced a fixed 400 characters after a lobby card's `data-code` attribute
+   and asserted "Not started yet" appeared inside that window. The new
+   card markup (longer class names, "Hosted by X" replacing a single emoji)
+   pushed that text a few characters past the old window for any room whose
+   title happened to be long — easy to hit against this session's own
+   accumulated test data. Fixed by slicing to the card's own closing
+   `</li>` instead of a magic character count.
+2. A real, structural test race unrelated to this visual pass at all: vitest
+   runs spec files in parallel by default, but every file here shares ONE
+   mutable resource by design — one running app, one SQLite database
+   (`spec/global-setup.ts` finds an already-running server, it doesn't spin
+   up an isolated instance per file). `listActiveRooms()`'s top-20 lobby
+   window is a real, correct product choice, but "the room I just created is
+   in it" is inherently racy when other spec files are concurrently
+   creating rooms against the same database. Reproduced directly: isolated,
+   `spec/rooms.test.ts` always passed; in the full suite it failed
+   intermittently depending on which other files happened to be creating
+   rooms concurrently — including with zero further changes to that file.
+   Fixed at the root with `fileParallelism: false` in `vitest.config.ts`
+   (files that share state shouldn't run concurrently), plus `isolate:
+   false` (vitest's own suggestion once parallelism is off, reusing workers
+   across files) for a real ~20% wall-clock improvement as a side benefit.
+   Verified by running the full suite four times in a row against the same
+   accumulating database afterward — the exact condition that reproduced
+   both bugs — for a clean 79/79 every time.
+
+### What's still open from this pass
+
+- **No real-browser visual/keyboard/resize verification** at 390/360px or
+  1280px — this environment has no GUI browser, the same standing
+  limitation recorded in every prior visual-pass entry in this file. Codex's
+  own local preview (explicitly left running and untouched throughout this
+  session, on a different port) is the mechanism for that check next.
+- Rooms, community, and profile pages were deliberately **not** restyled
+  beyond inheriting the new `--fg`/`--bg`/`--accent`/`--border` values —
+  the user scoped this pass to homepage + case library first, by design, to
+  review before continuing further.
+- Nothing in this session was pushed to `origin/main` or deployed, per this
+  session's explicit, narrower-than-usual authorization (same pattern as the
+  earlier nav/community pass in this file) — every commit above sits on
+  local `main` only.
