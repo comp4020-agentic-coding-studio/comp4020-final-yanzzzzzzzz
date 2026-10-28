@@ -6,7 +6,11 @@ import { SEED_PUZZLES } from "./data/puzzles.ts";
 
 // /data is the only thing that survives a restart or redeploy (fly.toml's
 // volume); DATA_DIR lets local dev point somewhere else without touching /data.
-const DB_PATH = process.env.DATA_DIR ? `${process.env.DATA_DIR}/app.db` : "/data/app.db";
+// Exported so src/uploads.ts can store cover images on the same durable
+// volume, in a directory next to the database rather than a second
+// independently-configured path.
+export const DATA_DIR = process.env.DATA_DIR ?? "/data";
+const DB_PATH = `${DATA_DIR}/app.db`;
 mkdirSync(dirname(DB_PATH), { recursive: true });
 
 export const db = new DatabaseSync(DB_PATH);
@@ -119,6 +123,15 @@ ensureColumn(
 );
 ensureColumn("puzzles", "shared", "ALTER TABLE puzzles ADD COLUMN shared INTEGER NOT NULL DEFAULT 1");
 ensureColumn("puzzles", "slug", "ALTER TABLE puzzles ADD COLUMN slug TEXT");
+// NULL means "no custom cover" — every existing row (every built-in puzzle,
+// every authored puzzle created before this column existed) keeps working
+// unchanged through covers.ts's existing stable-cover/archive-cover
+// fallback; this column only ever adds a third, higher-priority option.
+// Stores a server-generated filename under the uploads directory
+// (src/uploads.ts), set once at puzzle-creation time alongside the rest of
+// the row — never a user-controlled filename, and never updated afterward
+// (no route lets a player edit an existing case's cover).
+ensureColumn("puzzles", "cover_path", "ALTER TABLE puzzles ADD COLUMN cover_path TEXT");
 
 // ensureColumn can add new columns, but SQLite can't ALTER a CHECK
 // constraint in place — rooms.status predates the 'waiting' value a host-
@@ -291,11 +304,13 @@ reconcileSeedPuzzles();
 
 export interface Puzzle {
   id: string;
+  slug: string | null;
   title: string;
   premise: string;
   solution: string;
   author_session_id: string | null;
   shared: boolean;
+  cover_path: string | null;
 }
 
 export interface LobbyRoom {
@@ -328,15 +343,17 @@ export interface QaEntry {
   created_at: string;
 }
 
-const PUZZLE_COLUMNS = "id, title, premise, solution, author_session_id, shared";
+const PUZZLE_COLUMNS = "id, slug, title, premise, solution, author_session_id, shared, cover_path";
 
 function rowToPuzzle(row: {
   id: string;
+  slug: string | null;
   title: string;
   premise: string;
   solution: string;
   author_session_id: string | null;
   shared: number;
+  cover_path: string | null;
 }): Puzzle {
   return { ...row, shared: Boolean(row.shared) };
 }
@@ -366,12 +383,21 @@ export function createAuthoredPuzzle(args: {
   solution: string;
   authorSessionId: string;
   shared: boolean;
+  coverPath: string | null;
 }): Puzzle {
   const id = randomUUID();
   db.prepare(
-    `INSERT INTO puzzles (id, title, premise, solution, author_session_id, shared)
-     VALUES (?, ?, ?, ?, ?, ?)`,
-  ).run(id, args.title, args.premise, args.solution, args.authorSessionId, args.shared ? 1 : 0);
+    `INSERT INTO puzzles (id, title, premise, solution, author_session_id, shared, cover_path)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+  ).run(
+    id,
+    args.title,
+    args.premise,
+    args.solution,
+    args.authorSessionId,
+    args.shared ? 1 : 0,
+    args.coverPath,
+  );
   return rowToPuzzle(
     db.prepare(`SELECT ${PUZZLE_COLUMNS} FROM puzzles WHERE id = ?`).get(id) as Parameters<
       typeof rowToPuzzle
@@ -389,19 +415,20 @@ export function listAvailablePuzzles(search?: string): {
   premise: string;
   authorLabel: string | null;
   usageCount: number;
+  coverPath: string | null;
 }[] {
   const like = search ? `%${search.replace(/[%_]/g, (m) => `\\${m}`)}%` : null;
   const rows = (
     like
       ? db.prepare(
-          `SELECT p.id, p.slug, p.title, p.premise, p.author_session_id AS authorSessionId,
+          `SELECT p.id, p.slug, p.title, p.premise, p.author_session_id AS authorSessionId, p.cover_path AS coverPath,
                   (SELECT COUNT(*) FROM rooms r WHERE r.puzzle_id = p.id) AS usageCount
            FROM puzzles p
            WHERE p.shared = 1 AND (p.title LIKE ? ESCAPE '\\' OR p.premise LIKE ? ESCAPE '\\')
            ORDER BY p.created_at DESC`,
         )
       : db.prepare(
-          `SELECT p.id, p.slug, p.title, p.premise, p.author_session_id AS authorSessionId,
+          `SELECT p.id, p.slug, p.title, p.premise, p.author_session_id AS authorSessionId, p.cover_path AS coverPath,
                   (SELECT COUNT(*) FROM rooms r WHERE r.puzzle_id = p.id) AS usageCount
            FROM puzzles p
            WHERE p.shared = 1
@@ -414,6 +441,7 @@ export function listAvailablePuzzles(search?: string): {
     premise: string;
     authorSessionId: string | null;
     usageCount: number;
+    coverPath: string | null;
   }[];
   return rows.map((r) => ({
     id: r.id,
@@ -421,10 +449,38 @@ export function listAvailablePuzzles(search?: string): {
     title: r.title,
     premise: r.premise,
     usageCount: r.usageCount,
+    coverPath: r.coverPath,
     authorLabel: r.authorSessionId
       ? (getProfile(r.authorSessionId).nickname ?? "Anonymous author")
       : null,
   }));
+}
+
+// Who's allowed to GET a puzzle's uploaded cover image: the puzzle's own
+// author (always, even for a private/unshared puzzle — the author wrote
+// it), or a shared puzzle (public, same visibility rule every other puzzle
+// listing already uses), or anyone who has actually joined a room playing
+// this puzzle (so an invited player in a private-case room can see the
+// cover their host already showed them, without making the puzzle
+// independently guessable/public). Never checks the requesting session
+// against the solution — this governs an image, not plot content.
+export function canViewPuzzleCover(puzzleId: string, sessionId: string): boolean {
+  const puzzle = db
+    .prepare("SELECT author_session_id, shared FROM puzzles WHERE id = ?")
+    .get(puzzleId) as { author_session_id: string | null; shared: number } | undefined;
+  if (!puzzle) return false;
+  if (puzzle.shared) return true;
+  if (puzzle.author_session_id === sessionId) return true;
+  return Boolean(
+    db
+      .prepare(
+        `SELECT 1 FROM room_participants rp
+         JOIN rooms r ON r.id = rp.room_id
+         WHERE r.puzzle_id = ? AND rp.session_id = ?
+         LIMIT 1`,
+      )
+      .get(puzzleId, sessionId),
+  );
 }
 
 // A plain profile lookup, not displayLabel(): resolving who hosts a room

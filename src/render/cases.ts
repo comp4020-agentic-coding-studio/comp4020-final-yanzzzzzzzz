@@ -12,6 +12,7 @@ export interface CaseListing {
   premise: string;
   authorLabel: string | null;
   usageCount: number;
+  coverPath: string | null;
 }
 
 function caseListingHtml(puzzle: CaseListing): string {
@@ -20,7 +21,7 @@ function caseListingHtml(puzzle: CaseListing): string {
     <a href="/rooms/new?puzzleId=${encodeURIComponent(puzzle.id)}" class="case-browse-cover-link">
       <img
         class="case-browse-cover"
-        src="${coverFor(puzzle.slug)}"
+        src="${coverFor(puzzle.slug, puzzle.id, puzzle.coverPath)}"
         alt=""
         width="800"
         height="500"

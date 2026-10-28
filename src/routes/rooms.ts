@@ -1,6 +1,8 @@
 import { Hono } from "hono";
+import type { MiddlewareHandler } from "hono";
 import { streamSSE } from "hono/streaming";
 import {
+  canViewPuzzleCover,
   countParticipants,
   createAuthoredPuzzle,
   createRoom,
@@ -29,6 +31,8 @@ import { newRoomPage } from "../render/room-new.ts";
 import { roomNotFoundPage } from "../render/not-found.ts";
 import { broadcastLobbyCardChange, LOBBY_CHANNEL } from "./lobby.ts";
 import { isSameOrigin } from "../same-origin.ts";
+import { coverFilePath, coverRejectionMessage, deleteCover, processCoverUpload } from "../uploads.ts";
+import { readFile } from "node:fs/promises";
 
 const COOLDOWN_MS = 5_000;
 
@@ -39,7 +43,85 @@ const NOTICES: Record<string, string> = {
   "author-guess": "You wrote this case — let someone else crack it.",
   "unavailable-puzzle": "That puzzle isn't available to pick anymore.",
   "incomplete-puzzle": "Fill in a title, premise, and solution to create your case.",
+  "cover-too-large": "That request was too large — the cover image limit is 2 MiB.",
+  "too-large": coverRejectionMessage("too-large"),
+  "unsupported-format": coverRejectionMessage("unsupported-format"),
+  corrupt: coverRejectionMessage("corrupt"),
+  "pixel-limit": coverRejectionMessage("pixel-limit"),
 };
+
+// A single room-creation POST carries the cover file plus every text field
+// (title/premise/solution/name), so the body-size cap has to cover all of
+// it — 3 MiB total leaves comfortable room above the 2 MiB per-file cover
+// limit (src/uploads.ts) for the text fields and multipart framing
+// overhead, while still being small relative to this deploy's 256 MB RAM
+// budget. Applied only to this one route (not globally) since no other
+// POST on this app accepts a file.
+const ROOM_CREATE_BODY_LIMIT_BYTES = 3 * 1024 * 1024;
+
+// hono/body-limit's own implementation rejects via the Content-Length
+// header BEFORE reading any of the body — correct for avoiding the cost of
+// buffering an oversized upload, but it leaves however many bytes the
+// client already sent (or is still sending) unread on the socket.
+// Reproduced locally: on a keep-alive connection, those leftover bytes
+// become the start of the NEXT request on the same connection and corrupt
+// it; forcing `Connection: close` instead (tried first) only traded that
+// bug for an EPIPE on the client mid-upload, a worse experience for a real
+// browser tab, not just a test artifact. This drains and discards the
+// stream up to the same limit before responding — the connection stays
+// healthy and reusable, and the client's own request completes normally
+// instead of seeing a broken pipe.
+function roomCreateBodyLimit(): MiddlewareHandler {
+  return async (c, next) => {
+    const contentLength = c.req.header("content-length");
+    if (contentLength && Number(contentLength) <= ROOM_CREATE_BODY_LIMIT_BYTES) {
+      return next();
+    }
+    const body = c.req.raw.body;
+    if (!body) return next();
+
+    // Reading the stream here means the downstream handler's own
+    // c.req.parseBody() can no longer read it directly — when under the
+    // limit, the chunks collected below are replayed into a fresh
+    // ReadableStream and swapped onto c.req.raw before calling next(), the
+    // same pattern hono/body-limit's own "under the limit" path uses, so
+    // parseBody() sees an identical, fully-intact body.
+    //
+    // When OVER the limit, every remaining chunk is still read and
+    // discarded (not just stopped at) — leaving any of the client's bytes
+    // unread on the socket is exactly what corrupted a reused keep-alive
+    // connection before this fix; draining fully is what keeps the
+    // connection healthy for whatever request comes next on it.
+    const chunks: Uint8Array[] = [];
+    let size = 0;
+    let overLimit = false;
+    const reader = body.getReader();
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      size += value.length;
+      if (size > ROOM_CREATE_BODY_LIMIT_BYTES) {
+        overLimit = true;
+        continue; // keep draining, stop collecting
+      }
+      chunks.push(value);
+    }
+    if (overLimit) {
+      return c.redirect("/rooms/new?mode=author&notice=cover-too-large", 303);
+    }
+
+    c.req.raw = new Request(c.req.raw, {
+      body: new ReadableStream({
+        start(controller) {
+          for (const chunk of chunks) controller.enqueue(chunk);
+          controller.close();
+        },
+      }),
+      duplex: "half",
+    } as RequestInit);
+    return next();
+  };
+}
 
 export const rooms = new Hono();
 
@@ -60,7 +142,10 @@ rooms.get("/rooms/new", (c) => {
   );
 });
 
-rooms.post("/rooms", async (c) => {
+rooms.post(
+  "/rooms",
+  roomCreateBodyLimit(),
+  async (c) => {
   const sessionId = getOrCreateSessionId(c);
   const body = await c.req.parseBody();
   const mode = body.mode === "author" ? "author" : "existing";
@@ -74,8 +159,37 @@ rooms.post("/rooms", async (c) => {
     if (!title || !premise || !solution) {
       return c.redirect("/rooms/new?mode=author&notice=incomplete-puzzle", 303);
     }
+
+    // An absent/empty file input comes back from parseBody() as a plain
+    // string (see Hono's own body-parsing behavior), never as a File with
+    // size 0 — so "the field is a real File" is itself the no-cover check,
+    // with no size-0 special case needed.
+    let coverPath: string | null = null;
+    if (body.cover instanceof File) {
+      const result = await processCoverUpload(body.cover);
+      if (!result.ok) {
+        return c.redirect(`/rooms/new?mode=author&notice=${result.reason}`, 303);
+      }
+      coverPath = result.coverPath;
+    }
+
     const shared = body.shared === "on";
-    puzzle = createAuthoredPuzzle({ title, premise, solution, authorSessionId: sessionId, shared });
+    try {
+      puzzle = createAuthoredPuzzle({
+        title,
+        premise,
+        solution,
+        authorSessionId: sessionId,
+        shared,
+        coverPath,
+      });
+    } catch (err) {
+      // The puzzle row failed to insert after a cover was already written —
+      // never leave an orphaned file under uploads/covers with no row
+      // pointing at it.
+      if (coverPath) deleteCover(coverPath);
+      throw err;
+    }
   } else {
     const puzzleId = typeof body.puzzleId === "string" ? body.puzzleId : "";
     if (puzzleId) {
@@ -113,6 +227,41 @@ rooms.post("/rooms", async (c) => {
     "lobby-update",
   );
   return c.redirect(`/rooms/${room.code}`, 303);
+  },
+);
+
+// Serves a player-authored case's uploaded cover — deliberately NOT a
+// static file under /public (which serveStatic would expose to anyone, no
+// matter the puzzle's own shared/private visibility), and deliberately not
+// exposing OUTPUT_DIR as a listable/traversable directory: this route only
+// ever reads the exact filename stored in puzzles.cover_path for the
+// puzzle id in the URL, through canViewPuzzleCover()'s own access check —
+// the puzzle's author, anyone who already joined a room playing it, or
+// anyone at all if the puzzle is shared/public. A guess-the-id private
+// cover request gets the same 404 as a nonexistent one, not a 403 that
+// would itself confirm the id exists.
+rooms.get("/uploads/cover/:puzzleId", async (c) => {
+  const puzzleId = c.req.param("puzzleId");
+  const puzzle = getPuzzle(puzzleId);
+  if (!puzzle || !puzzle.cover_path) return c.notFound();
+
+  const sessionId = getOrCreateSessionId(c);
+  if (!canViewPuzzleCover(puzzleId, sessionId)) return c.notFound();
+
+  let fileBytes;
+  try {
+    fileBytes = await readFile(coverFilePath(puzzle.cover_path));
+  } catch {
+    return c.notFound();
+  }
+  c.header("Content-Type", "image/webp");
+  c.header("X-Content-Type-Options", "nosniff");
+  // Covers are re-encoded once at upload time and never modified afterward
+  // (no "edit my case" route exists) — safe to cache for a long time
+  // without a cache-busting query string, since the URL itself (the
+  // puzzle's own id) never points at different bytes over time.
+  c.header("Cache-Control", "private, max-age=86400");
+  return c.body(fileBytes);
 });
 
 rooms.get("/join", (c) => {

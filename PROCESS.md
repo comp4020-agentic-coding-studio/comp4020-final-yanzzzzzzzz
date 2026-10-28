@@ -2044,3 +2044,139 @@ committed passes below, per the user's own "readability first" ordering.
 
 Commit: [`02bdaca`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-yanzzzzzzzz/commit/02bdaca).
 Local only, not pushed, per this session's explicit authorization.
+
+## Optional cover-image upload for player-authored cases
+
+Added an optional cover image upload to "Write your own" (`/rooms/new?mode=author`)
+— a file input alongside the existing title/premise fields, validated and
+re-encoded server-side, persisted under `DATA_DIR/uploads/covers`, and shown
+everywhere a case's cover already appears (room page, case library, home
+page's featured cases, the room-creation picker's live preview).
+
+**Server-side decode, not MIME/extension trust**
+(`src/uploads.ts`): every uploaded file is decoded with `sharp`
+(`limitInputPixels: 16_000_000, failOn: "error"`), which is what actually
+rejects a renamed non-image, a corrupt file, or a format this app doesn't
+want (SVG — can carry embedded `<script>`/external refs; GIF — animation
+this app has no use for) — checked against the browser-supplied
+`Content-Type` and filename for nothing. A file that decodes is resized to
+fit 1600×1600, re-encoded to WebP, and written under a fresh
+`randomUUID().webp` filename — the uploader's own filename is used for
+nothing, not even to pick an extension, so no path-traversal or
+reserved-name filename can reach the filesystem. Re-encoding through
+sharp's own pipeline (rather than copying input bytes) is what strips
+EXIF/ICC metadata and guarantees the bytes on disk are a real
+decoded-and-recompressed raster image. Verified by hand against a real fake-
+MIME text file, a real SVG, a real GIF, and a real 25-megapixel JPEG kept
+under the 2 MiB file-size cap via compression (to isolate the pixel-count
+limit from the file-size limit) — all four rejected with the correct,
+distinct error message, none producing a 500.
+
+**Two separate size limits, both load-bearing on a 256 MB machine**: a
+2 MiB per-file cap (`src/uploads.ts`) checked before any decode is
+attempted, and a 3 MiB total-request-body cap (`roomCreateBodyLimit()` in
+`src/routes/rooms.ts`) covering the file plus every text field and
+multipart framing overhead.
+
+**A real bug found and fixed while testing the body limit, not initially
+present as "working"**: the first implementation used `hono/body-limit`,
+which rejects an oversized request via its `Content-Length` header BEFORE
+reading any of the body. That left however many bytes the client had
+already sent sitting unread on the socket — reproduced locally, a rejected
+3+ MiB upload reliably corrupted the NEXT request reusing the same
+keep-alive connection (manifesting as the test suite's own body-limit test
+breaking an unrelated, later test with a raw socket error). Forcing
+`Connection: close` on that response instead only traded server-side
+connection corruption for a client-visible `EPIPE` mid-upload — a worse
+experience for a real browser tab, not merely a different test failure.
+The actual fix (`roomCreateBodyLimit()`) drains and discards the stream up
+to the same limit before responding, so the connection stays healthy and
+reusable and the client's own request completes normally rather than
+seeing a broken pipe. This is the kind of failure "ran it again and it
+passed" would have hidden — the first fix changed WHICH test failed, not
+whether the underlying bug existed.
+
+**Access control for a private case's cover**
+(`canViewPuzzleCover()` in `src/db.ts`, `GET /uploads/cover/:puzzleId` in
+`src/routes/rooms.ts`): not a static file under `/public` (which
+`serveStatic` would expose to anyone regardless of the puzzle's own
+shared/private visibility) — a dedicated route that re-checks, per
+request, whether the requesting session is the puzzle's author, has
+already joined a room playing it, or the puzzle is simply shared/public.
+An invalid id or a private cover a stranger session has no business
+viewing both return a plain 404, not a 403 that would itself confirm the
+id exists. Verified: the puzzle's own author can view a private cover; a
+brand-new anonymous session with no cookie and no room membership gets
+404; a shared puzzle's cover is visible with no cookie at all.
+
+**Dockerfile/runtime dependency** (`package.json`, `Dockerfile`): `sharp`
+moved from `devDependencies` to `dependencies` — it has to exist at
+runtime, not just at test/build time. `sharp` ships its native libvips
+binary as a separate per-platform optional-dependency package
+(`@img/sharp-linuxmusl-x64` for this repo's Alpine/musl base image, not the
+glibc build another Linux distro would need) — esbuild can't bundle a
+native binary, so the build script now marks `--external:sharp`
+(confirmed: `grep '"sharp"' dist/server.js` still shows a plain `import
+sharp from "sharp"`, never inlined). The Dockerfile's runtime stage no
+longer copies `node_modules` from the builder stage (which only ever
+installed devDependencies in frozen-lockfile mode before this change, and
+in any case isn't the stage whose `node_modules` a from-source Alpine
+platform-resolution should come from) — it now has a dedicated `deps`
+stage that runs `pnpm install --prod --frozen-lockfile` on the SAME
+`node:24-alpine` base the runtime stage uses, so pnpm's own platform
+resolution (confirmed in `pnpm-lock.yaml`: the musl-tagged package carries
+`libc: [musl]` metadata pnpm reads) picks the musl binary because the
+install genuinely runs on musl, not because of a hand-picked package name.
+`pnpm install --prod --frozen-lockfile --dry-run` run locally confirms this
+resolves cleanly against the committed lockfile.
+
+**Honest limitation**: this environment has no Docker available, so the
+actual Alpine/musl runtime image was never built or booted here — verified
+only by local `sharp` behavior (same `@img/sharp-*` package family,
+different platform target) and by reasoning through pnpm's own
+platform-resolution metadata in the lockfile. CI's own `docker build`
+step (`.github/workflows/checks.yml`, already in place) is what will give
+the first real confirmation that the runtime stage's `node_modules/sharp`
+actually loads on Alpine — flagged here rather than claimed as verified.
+
+**Persistence, migration, cleanup**: `puzzles.cover_path` is a new nullable
+column, added additively via the existing `ensureColumn()` pattern — every
+pre-existing row (every built-in puzzle, every authored puzzle from before
+this feature) gets `cover_path = NULL` and keeps resolving through
+`covers.ts`'s existing stable-cover/archive-cover fallback unchanged,
+verified against a hand-built pre-this-session-schema fixture the same way
+`spec/migration.test.ts` already verifies every other column. An
+incomplete submission (blank title) is rejected BEFORE any file is
+processed, so it can never produce an orphaned cover file; a cover that
+*is* processed but whose puzzle row then fails to insert is cleaned up via
+`deleteCover()` in a catch block. Verified cross-restart: created a room
+with an uploaded cover, restarted the server against the same `DATA_DIR`,
+confirmed the cover still serves correctly.
+
+**Tests** (`spec/cover-upload.test.ts`, 13 new tests; `spec/migration.test.ts`
+gained one assertion for the new column) exercise the real multipart path
+end to end against the running app — valid JPEG and PNG uploads re-encoded
+to real `image/webp` (checked via the actual RIFF/WEBP file signature, not
+a trusted header), no-file-chosen falling back to the existing archive
+cover, every rejection path (corrupt/fake-MIME, SVG, GIF, over-size,
+over-pixel-count, over-body-limit) returning its distinct notice with no
+500, the incomplete-submission orphan-file non-issue, private-vs-public
+cover access control, and the cover appearing correctly in the case
+library and the room-creation picker's live-preview JSON — not just the
+room page. Fixture images are generated on the fly with the same `sharp`
+dependency the app itself uses, not committed as binary files.
+
+**Verified**: `pnpm typecheck` and `pnpm build` clean (`dist/server.js`
+still imports `sharp` externally, not bundled). Full suite **105/105
+across 19 files** (92 pre-existing + 13 new, zero existing test weakened)
+run twice in a row against a freshly rebuilt, fully isolated server (port
+8082, its own throwaway `.data-test-8082/` `DATA_DIR`), confirming the
+body-limit connection-corruption fix actually eliminated the flake rather
+than just moving it. The user's own preview processes on ports 8081/8083
+were never stopped, restarted, or touched. `pnpm run check:evidence`
+clean.
+
+**Not done in this pass**: the page-flip transition between "Choose a
+case" and "Write your own," and the per-mode draft-preservation /
+browser-history behavior that transition requires — tracked as a separate,
+independently committed pass below.

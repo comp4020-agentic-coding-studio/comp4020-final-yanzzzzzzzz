@@ -22,11 +22,13 @@ afterEach(() => {
 
 const FAKE_PUZZLE: Puzzle = {
   id: "p1",
+  slug: null,
   title: "Test",
   premise: "A premise.",
   solution: "A specific solution phrase.",
   author_session_id: null,
   shared: true,
+  cover_path: null,
 };
 
 it("is unavailable with neither GROQ_API_KEY nor ALLOW_MOCK_JUDGE set — the real misconfigured-production shape", async () => {

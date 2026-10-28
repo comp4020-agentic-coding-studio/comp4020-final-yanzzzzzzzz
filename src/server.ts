@@ -32,7 +32,7 @@ app.get("/", (c) => {
   }));
   const featuredPuzzles = listAvailablePuzzles()
     .slice(0, 3)
-    .map((p) => ({ id: p.id, slug: p.slug, title: p.title, premise: p.premise }));
+    .map((p) => ({ id: p.id, slug: p.slug, title: p.title, premise: p.premise, coverPath: p.coverPath }));
   return c.html(
     homePage({ rooms, profile, reasoningSeconds: totalReasoningSeconds(), featuredPuzzles }),
   );

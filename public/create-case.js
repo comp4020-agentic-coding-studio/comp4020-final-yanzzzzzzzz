@@ -5,22 +5,6 @@
 // cover/title/premise swap on the preview panel when the <select> changes,
 // and a cosmetic submit-label swap in author mode — neither is load-bearing.
 (() => {
-  // Mirrors src/render/covers.ts's STABLE_COVERS exactly (slug -> dedicated
-  // cover; everything else falls back to the shared archive cover). Kept in
-  // sync by hand since there's no shared build step between server and
-  // client code in this repo — if a future puzzle gets a new dedicated
-  // cover, both this map and covers.ts need the same entry.
-  const STABLE_COVERS = {
-    "turtle-soup-bowl": "/images/mystery/case-soup.webp",
-    "silent-phone-call": "/images/mystery/case-phone.webp",
-    "elevator-routine": "/images/mystery/case-elevator.webp",
-  };
-  const ARCHIVE_COVER = "/images/mystery/case-archive.webp";
-
-  function coverFor(slug) {
-    return (slug && STABLE_COVERS[slug]) || ARCHIVE_COVER;
-  }
-
   function escapeHtml(s) {
     return s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
   }
@@ -49,7 +33,7 @@
       const by = puzzle.authorLabel ? `Player-created, by ${escapeHtml(puzzle.authorLabel)}` : "Official case";
       return `
         <div class="case-file-cover">
-          <img src="${coverFor(puzzle.slug)}" alt="" width="800" height="500" decoding="async" />
+          <img src="${escapeHtml(puzzle.coverUrl)}" alt="" width="800" height="500" decoding="async" />
         </div>
         <p class="case-file-source">${escapeHtml(by)}</p>
         <h2 class="case-file-title">${escapeHtml(puzzle.title)}</h2>
@@ -81,5 +65,43 @@
     };
     shared.addEventListener("change", sync);
     sync();
+  }
+
+  // Cover-upload preview: a local object URL, never uploaded anywhere until
+  // the real form submit — this only reads the File the browser already
+  // holds in the <input>'s own FileList, the same bytes that submit as
+  // multipart form data. Revoking the previous object URL before creating a
+  // new one (and on remove) avoids leaking one per file choice.
+  const coverInput = document.getElementById("cover");
+  const coverPreview = document.getElementById("cover-preview");
+  const coverRemove = document.getElementById("cover-remove");
+  if (coverInput && coverPreview && coverRemove) {
+    let objectUrl = null;
+
+    function showGlyph() {
+      coverPreview.classList.add("case-file-cover-author");
+      coverPreview.innerHTML = `<span class="case-file-seal">✎</span>`;
+      coverRemove.hidden = true;
+    }
+
+    function showPreview(file) {
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+      objectUrl = URL.createObjectURL(file);
+      coverPreview.classList.remove("case-file-cover-author");
+      coverPreview.innerHTML = `<img src="${objectUrl}" alt="" width="800" height="500" />`;
+      coverRemove.hidden = false;
+    }
+
+    coverInput.addEventListener("change", () => {
+      const file = coverInput.files && coverInput.files[0];
+      if (file) showPreview(file);
+      else showGlyph();
+    });
+
+    coverRemove.addEventListener("click", () => {
+      coverInput.value = "";
+      showGlyph();
+      coverInput.focus();
+    });
   }
 })();

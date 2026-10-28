@@ -16,6 +16,18 @@ const STABLE_COVERS: Record<string, string> = {
 
 const ARCHIVE_COVER = "/images/mystery/case-archive.webp";
 
-export function coverFor(slug: string | null | undefined): string {
+// `puzzleId` is only ever used to build the uploaded-cover route's URL
+// (never to look anything up itself) — pass it so a player-authored
+// puzzle's own uploaded cover (src/uploads.ts, served through
+// routes/rooms.ts's own access-checked GET /uploads/cover/:puzzleId) takes
+// priority over the shared archive photo; every other puzzle (every
+// built-in, and any authored puzzle with no cover chosen) is completely
+// unaffected and keeps resolving through the existing two-tier fallback.
+export function coverFor(
+  slug: string | null | undefined,
+  puzzleId?: string,
+  coverPath?: string | null,
+): string {
+  if (coverPath && puzzleId) return `/uploads/cover/${encodeURIComponent(puzzleId)}`;
   return asset((slug && STABLE_COVERS[slug]) || ARCHIVE_COVER);
 }

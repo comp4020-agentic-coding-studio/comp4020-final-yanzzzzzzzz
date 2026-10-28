@@ -1061,6 +1061,22 @@ textarea:focus-visible {
   font-style: italic;
 }
 
+.room-cover {
+  max-width: 24rem;
+  aspect-ratio: 16 / 10;
+  border-radius: 0.4rem;
+  overflow: hidden;
+  border: 1px solid var(--gold-line);
+  margin: 0.75rem 0;
+}
+
+.room-cover img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
 .premise {
   font-size: 1.1rem;
   padding: 1rem;
@@ -1430,6 +1446,32 @@ textarea:focus-visible {
 
 .case-file-field-label {
   margin-top: 0.4rem;
+}
+
+/* The cover-upload controls sit directly under the cover preview itself
+   (#cover-preview — the same element the sealed/author glyph already
+   occupies, just swapped for an <img> once a file is chosen, by
+   create-case.js). Plain default file-input styling: no custom button
+   skin that could lose native keyboard/screen-reader behavior for a
+   feature this small. */
+.case-file-cover-hint {
+  margin: 0 0 0.4rem;
+  font-size: 0.8rem;
+  color: color-mix(in srgb, var(--paper-ink) 65%, transparent);
+}
+
+.case-file-cover-remove {
+  align-self: flex-start;
+  background: transparent;
+  color: color-mix(in srgb, var(--accent) 30%, var(--paper-ink) 70%);
+  border: 1px solid rgba(11, 14, 26, 0.3);
+  padding: 0.35rem 0.7rem;
+  min-height: 0;
+  font-size: 0.85rem;
+}
+
+.case-file-cover-remove:hover {
+  background: color-mix(in srgb, var(--paper-ink) 8%, transparent);
 }
 
 .case-file-panel label,

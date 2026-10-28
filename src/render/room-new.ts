@@ -11,6 +11,7 @@ export interface PuzzleOption {
   premise: string;
   authorLabel: string | null;
   usageCount: number;
+  coverPath: string | null;
 }
 
 // The folder's own pair of tabs — plain links to the same route with a
@@ -48,7 +49,7 @@ function puzzleCasePreview(puzzle: PuzzleOption): string {
   const by = puzzle.authorLabel ? `Player-created, by ${escapeHtml(puzzle.authorLabel)}` : "Official case";
   return `<div class="case-file-panel case-file-preview" id="case-file-preview">
     <div class="case-file-cover">
-      <img src="${coverFor(puzzle.slug)}" alt="" width="800" height="500" decoding="async" />
+      <img src="${coverFor(puzzle.slug, puzzle.id, puzzle.coverPath)}" alt="" width="800" height="500" decoding="async" />
     </div>
     <p class="case-file-source">${by}</p>
     <h2 class="case-file-title">${escapeHtml(puzzle.title)}</h2>
@@ -103,7 +104,17 @@ function existingCaseFileHtml(puzzles: PuzzleOption[], selectedPuzzleId?: string
     ${selected ? puzzleCasePreview(selected) : sealedCasePreview()}
   </form>
   <script id="puzzle-data" type="application/json">${JSON.stringify(
-    puzzles.map((p) => ({ id: p.id, slug: p.slug, title: p.title, premise: p.premise, authorLabel: p.authorLabel })),
+    puzzles.map((p) => ({
+      id: p.id,
+      slug: p.slug,
+      title: p.title,
+      premise: p.premise,
+      authorLabel: p.authorLabel,
+      // The server-side resolved cover URL, not the raw coverPath filename —
+      // create-case.js never needs to know the uploads directory's own
+      // naming scheme, only the public URL every other cover already uses.
+      coverUrl: coverFor(p.slug, p.id, p.coverPath),
+    })),
   )}</script>`;
 }
 
@@ -113,13 +124,21 @@ function authorCaseFileHtml(): string {
   // labelled hidden-until-solved, so the "sealed until solved" rule the rest
   // of the app enforces server-side is also true of this page's own layout:
   // nothing about to be secret sits in the panel styled as the public-facing
-  // case content.
-  return `<form method="post" action="/rooms" id="create-form" class="case-file-form">
+  // case content. `enctype="multipart/form-data"` is required for the file
+  // input below to actually submit bytes (not just a filename string) —
+  // the server (routes/rooms.ts) re-validates every field regardless, so
+  // this changes nothing about what's trusted, only what the browser is
+  // able to send.
+  return `<form method="post" action="/rooms" id="create-form" class="case-file-form" enctype="multipart/form-data">
     <input type="hidden" name="mode" value="author" />
     <div class="case-file-panel case-file-fields">
-      <div class="case-file-cover case-file-cover-author" aria-hidden="true">
+      <div class="case-file-cover case-file-cover-author" id="cover-preview" aria-hidden="true">
         <span class="case-file-seal">✎</span>
       </div>
+      <label for="cover" class="case-file-field-label">Cover image (optional)</label>
+      <input type="file" id="cover" name="cover" accept="image/jpeg,image/png,image/webp" />
+      <button type="button" id="cover-remove" class="case-file-cover-remove" hidden>Remove selected image</button>
+      <p class="case-file-cover-hint">JPEG, PNG, or WebP, up to 2 MiB. No GIF or SVG.</p>
       <p class="case-file-source">Your case</p>
       <label for="title" class="case-file-field-label">Case title</label>
       <input type="text" id="title" name="title" maxlength="80" required autocomplete="off" placeholder="The Elevator Routine" class="case-file-title-input" />

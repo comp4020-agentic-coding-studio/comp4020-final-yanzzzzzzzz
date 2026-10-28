@@ -3,6 +3,7 @@ import type { Member } from "../sse.ts";
 import { layout } from "./layout.ts";
 import { escapeHtml } from "./html.ts";
 import { asset } from "./asset.ts";
+import { coverFor } from "./covers.ts";
 
 const VERDICT_LABEL: Record<string, string> = {
   yes: "Yes",
@@ -155,6 +156,9 @@ export function roomPage(args: {
           <button type="button" class="share-button" id="copy-code-button" data-code="${room.code}">Copy code</button>
           <button type="button" class="share-button" id="copy-link-button">Copy room link</button>
           <span class="share-feedback" id="share-feedback" role="status" aria-live="polite"></span>
+        </div>
+        <div class="room-cover">
+          <img src="${coverFor(puzzle.slug, puzzle.id, puzzle.cover_path)}" alt="" width="800" height="500" loading="lazy" decoding="async" />
         </div>
         <p class="premise">${escapeHtml(puzzle.premise)}</p>
         <p class="connection-status" id="connection-status" role="status" aria-live="polite" hidden></p>

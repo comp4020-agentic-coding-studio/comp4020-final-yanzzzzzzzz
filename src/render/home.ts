@@ -115,6 +115,7 @@ export interface FeaturedPuzzle {
   slug: string | null;
   title: string;
   premise: string;
+  coverPath: string | null;
 }
 
 function featuredCaseHtml(puzzle: FeaturedPuzzle): string {
@@ -126,7 +127,7 @@ function featuredCaseHtml(puzzle: FeaturedPuzzle): string {
     <a href="/rooms/new?puzzleId=${encodeURIComponent(puzzle.id)}" class="featured-cover-link">
       <img
         class="featured-cover"
-        src="${coverFor(puzzle.slug)}"
+        src="${coverFor(puzzle.slug, puzzle.id, puzzle.coverPath)}"
         alt=""
         width="800"
         height="500"

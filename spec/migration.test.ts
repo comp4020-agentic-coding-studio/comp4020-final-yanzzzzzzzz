@@ -130,9 +130,15 @@ it("keeps every existing room, participant, transcript entry, and authored puzzl
     expect(entries).toEqual([{ body: "is it a person" }]);
 
     const authoredPuzzle = db.db
-      .prepare("SELECT title FROM puzzles WHERE author_session_id = ?")
-      .get("sess-real-1") as { title: string } | undefined;
+      .prepare("SELECT title, cover_path FROM puzzles WHERE author_session_id = ?")
+      .get("sess-real-1") as { title: string; cover_path: string | null } | undefined;
     expect(authoredPuzzle?.title).toBe("A Real Authored Case");
+    // The fixture's pre-this-session schema predates cover_path entirely
+    // (no such column exists in the CREATE TABLE above) — a real pre-upload
+    // /data volume migrating forward must land every existing puzzle row on
+    // cover_path = NULL (src/render/covers.ts's existing fallback), never an
+    // error from a missing column or a NOT NULL default that breaks old rows.
+    expect(authoredPuzzle?.cover_path).toBeNull();
 
     const profile = db.getProfile("sess-real-1");
     expect(profile.nickname).toBe("Riko");
