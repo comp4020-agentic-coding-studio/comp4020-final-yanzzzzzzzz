@@ -2,6 +2,10 @@ import { expect, inject, it } from "vitest";
 
 const baseUrl = inject("baseUrl");
 
+// The /community-specific aria-current assertion lives in
+// spec/community.test.ts instead of here, alongside the rest of that
+// route's coverage — this file only asserts against nav items/pages that
+// exist independently of whether the community feature itself has landed.
 it("the site nav marks the current page with aria-current, has no Login control, and keeps a profile entry point", async () => {
   const home = await (await fetch(new URL("/", baseUrl))).text();
   expect(home).toMatch(/<a href="\/"[^>]*aria-current="page"[^>]*>Home<\/a>/);
@@ -12,9 +16,6 @@ it("the site nav marks the current page with aria-current, has no Login control,
 
   const cases = await (await fetch(new URL("/cases", baseUrl))).text();
   expect(cases).toMatch(/<a href="\/cases"[^>]*aria-current="page"[^>]*>Case Library<\/a>/);
-
-  const community = await (await fetch(new URL("/community", baseUrl))).text();
-  expect(community).toMatch(/<a href="\/community"[^>]*aria-current="page"[^>]*>Community<\/a>/);
 });
 
 it("the brand icon links back to the homepage and is original markup, not an <img> of third-party art", async () => {
