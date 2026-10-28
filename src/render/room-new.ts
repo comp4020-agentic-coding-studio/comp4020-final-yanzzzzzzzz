@@ -2,71 +2,141 @@ import type { Profile } from "../db.ts";
 import { layout } from "./layout.ts";
 import { escapeHtml } from "./html.ts";
 import { asset } from "./asset.ts";
+import { coverFor } from "./covers.ts";
 
 export interface PuzzleOption {
   id: string;
+  slug: string | null;
   title: string;
   premise: string;
   authorLabel: string | null;
   usageCount: number;
 }
 
+// The folder's own pair of tabs — plain links to the same route with a
+// different ?mode=, not JS-driven tab panels, so the page works identically
+// with no script and the browser's own back/forward/reload all do the
+// obvious thing.
 function tabsHtml(mode: "existing" | "author"): string {
-  return `<nav class="create-tabs" aria-label="Case source">
-    <a href="/rooms/new?mode=existing" class="${mode === "existing" ? "active" : ""}" aria-current="${mode === "existing" ? "page" : "false"}">Choose an existing case</a>
+  return `<nav class="case-tabs" aria-label="Case source">
+    <a href="/rooms/new?mode=existing" class="${mode === "existing" ? "active" : ""}" aria-current="${mode === "existing" ? "page" : "false"}">Choose a case</a>
     <a href="/rooms/new?mode=author" class="${mode === "author" ? "active" : ""}" aria-current="${mode === "author" ? "page" : "false"}">Write your own</a>
   </nav>`;
 }
 
-function existingFormHtml(puzzles: PuzzleOption[], selectedPuzzleId?: string): string {
+// "Surprise me" deliberately never shows a real cover, title, or premise —
+// those would all be sealed-until-solved facts about whatever
+// pickRandomPuzzle() ends up choosing at submit time, and rendering them
+// here (even styled as a guess) would be showing a specific story as if it
+// were already decided, which it isn't. A player who wants to see what
+// they're committing to has "Choose a case" right next to this tab.
+function sealedCaseLeftPage(): string {
+  return `<div class="case-file-left" id="case-file-left">
+    <div class="case-file-cover case-file-cover-sealed" aria-hidden="true">
+      <span class="case-file-seal">?</span>
+    </div>
+    <p class="case-file-source">Sealed case</p>
+    <h2 class="case-file-title">Let fate choose your mystery</h2>
+    <p class="case-file-premise">
+      A random case is assigned the moment you create the room — nobody,
+      including you, knows which one until the file opens.
+    </p>
+  </div>`;
+}
+
+function puzzleLeftPage(puzzle: PuzzleOption): string {
+  const by = puzzle.authorLabel ? `Player-created, by ${escapeHtml(puzzle.authorLabel)}` : "Official case";
+  return `<div class="case-file-left" id="case-file-left">
+    <div class="case-file-cover">
+      <img src="${coverFor(puzzle.slug)}" alt="" width="800" height="500" decoding="async" />
+    </div>
+    <p class="case-file-source">${by}</p>
+    <h2 class="case-file-title">${escapeHtml(puzzle.title)}</h2>
+    <p class="case-file-premise">${escapeHtml(puzzle.premise)}</p>
+  </div>`;
+}
+
+function existingCaseFileHtml(puzzles: PuzzleOption[], selectedPuzzleId?: string): string {
+  const selected = selectedPuzzleId ? puzzles.find((p) => p.id === selectedPuzzleId) : undefined;
   const options = puzzles
     .map((p) => {
       const by = p.authorLabel ? ` — by ${escapeHtml(p.authorLabel)}` : " — official";
-      const selected = p.id === selectedPuzzleId ? " selected" : "";
-      return `<option value="${p.id}"${selected}>${escapeHtml(p.title)}${by} (used ${p.usageCount}×)</option>`;
+      const isSelected = p.id === selectedPuzzleId ? " selected" : "";
+      return `<option value="${p.id}"${isSelected}>${escapeHtml(p.title)}${by} (used ${p.usageCount}×)</option>`;
     })
     .join("\n");
 
-  return `<form method="post" action="/rooms" id="create-form">
+  // Both "pages" of the desk spread are inside this one <form> (a visual
+  // two-column layout, not two separate documents) so a single POST still
+  // carries the puzzle pick, the room name, and the submit button together —
+  // no nested forms, no duplicate ids between modes since only one mode's
+  // markup is ever rendered per request.
+  return `<form method="post" action="/rooms" id="create-form" class="case-file-form">
     <input type="hidden" name="mode" value="existing" />
-    <label for="puzzleId">Pick a case</label>
-    <select id="puzzleId" name="puzzleId">
-      <option value="">Surprise me</option>
-      ${options}
-    </select>
-    <p class="puzzle-preview" id="puzzle-preview" hidden></p>
+    ${selected ? puzzleLeftPage(selected) : sealedCaseLeftPage()}
 
-    <label for="name">Room name (optional)</label>
-    <input type="text" id="name" name="name" maxlength="60" autocomplete="off" placeholder="Friday reasoning squad" />
+    <div class="case-file-right">
+      <h1 class="case-file-room-heading">Investigation room</h1>
+      <p class="case-file-right-blurb">
+        Anyone with this room's code can walk in and read the case file —
+        questions only start once you, as host, open the investigation.
+      </p>
 
-    <button type="submit">Create room</button>
+      <label for="puzzleId">Pick a case</label>
+      <select id="puzzleId" name="puzzleId">
+        <option value="" ${selectedPuzzleId ? "" : "selected"}>Surprise me</option>
+        ${options}
+      </select>
+
+      <label for="name">Room name (optional)</label>
+      <input type="text" id="name" name="name" maxlength="60" autocomplete="off" placeholder="Friday reasoning squad" />
+
+      <button type="submit" class="button-link case-file-submit">Create investigation room</button>
+      <a href="/cases" class="case-file-back-link">Back to the case library</a>
+    </div>
   </form>
   <script id="puzzle-data" type="application/json">${JSON.stringify(
-    puzzles.map((p) => ({ id: p.id, title: p.title, premise: p.premise })),
+    puzzles.map((p) => ({ id: p.id, slug: p.slug, title: p.title, premise: p.premise, authorLabel: p.authorLabel })),
   )}</script>`;
 }
 
-function authorFormHtml(): string {
-  return `<form method="post" action="/rooms" id="create-form">
+function authorCaseFileHtml(): string {
+  // The left page carries only what a player would eventually see (title,
+  // premise) — the solution lives on the right page, explicitly labelled
+  // hidden-until-solved, so the "sealed until solved" rule the rest of the
+  // app enforces server-side is also true of this page's own layout: nothing
+  // about to be secret sits on the side styled as the public-facing cover.
+  return `<form method="post" action="/rooms" id="create-form" class="case-file-form">
     <input type="hidden" name="mode" value="author" />
-    <label for="title">Case title</label>
-    <input type="text" id="title" name="title" maxlength="80" required autocomplete="off" placeholder="The Elevator Routine" />
+    <div class="case-file-left">
+      <div class="case-file-cover case-file-cover-author" aria-hidden="true">
+        <span class="case-file-seal">✎</span>
+      </div>
+      <p class="case-file-source">Your case</p>
+      <label for="title" class="case-file-field-label">Case title</label>
+      <input type="text" id="title" name="title" maxlength="80" required autocomplete="off" placeholder="The Elevator Routine" class="case-file-title-input" />
 
-    <label for="premise">Premise (what players see)</label>
-    <textarea id="premise" name="premise" maxlength="1000" required rows="3"></textarea>
+      <label for="premise" class="case-file-field-label">Premise (what players see)</label>
+      <textarea id="premise" name="premise" maxlength="1000" required rows="5" placeholder="A short, strange scene with no explanation attached."></textarea>
+    </div>
 
-    <label for="solution">Solution (hidden until solved)</label>
-    <textarea id="solution" name="solution" maxlength="2000" required rows="4" placeholder="Explain the full truth, the reason, and any key detail the AI judge needs to tell a correct guess from a close one."></textarea>
+    <div class="case-file-right">
+      <h1 class="case-file-room-heading">Investigation room</h1>
 
-    <label class="checkbox-label">
-      <input type="checkbox" name="shared" id="shared" />
-      Share to the public case library, so other players can pick it too
-    </label>
+      <label for="solution">Solution <span class="case-file-hint">(hidden until solved)</span></label>
+      <textarea id="solution" name="solution" maxlength="2000" required rows="4" placeholder="Explain the full truth, the reason, and any key detail the AI judge needs to tell a correct guess from a close one."></textarea>
 
-    <label for="name">Room name (optional)</label>
-    <input type="text" id="name" name="name" maxlength="60" autocomplete="off" placeholder="Friday reasoning squad" />
+      <label class="checkbox-label">
+        <input type="checkbox" name="shared" id="shared" />
+        Share to the public case library, so other players can pick it too
+      </label>
 
-    <button type="submit" id="create-submit">Create room</button>
+      <label for="name">Room name (optional)</label>
+      <input type="text" id="name" name="name" maxlength="60" autocomplete="off" placeholder="Friday reasoning squad" />
+
+      <button type="submit" id="create-submit" class="button-link case-file-submit">Create investigation room</button>
+      <a href="/cases" class="case-file-back-link">Back to the case library</a>
+    </div>
   </form>`;
 }
 
@@ -82,10 +152,12 @@ export function newRoomPage(args: {
     "Start a new case · Turtle Soup Puzzle Room",
     `
     <section class="create-case">
-      <h1>Start a new case</h1>
+      <h1 class="create-case-heading">Start a new case</h1>
       ${notice ? `<p class="notice" role="status">${escapeHtml(notice)}</p>` : ""}
       ${tabsHtml(mode)}
-      ${mode === "existing" ? existingFormHtml(puzzles, selectedPuzzleId) : authorFormHtml()}
+      <div class="case-file-desk">
+        ${mode === "existing" ? existingCaseFileHtml(puzzles, selectedPuzzleId) : authorCaseFileHtml()}
+      </div>
     </section>
     <script src="${asset("/create-case.js")}"></script>
     `,

@@ -19,6 +19,13 @@
   --accent-bright: #e9bd5b;
   --border: rgba(236, 231, 217, 0.14);
   --gold-line: rgba(209, 161, 61, 0.34);
+  /* Warm old-paper tone, used only for the create-case folder's two "pages"
+     — the one place on the site content is meant to read as a physical
+     document rather than screen chrome. Dark enough to still meet contrast
+     against --paper-ink without glowing against the surrounding ink-navy
+     desk background. */
+  --paper: #ddd0ad;
+  --paper-ink: #2a2015;
   /* Shared horizontal inset for main's content AND the hero's text column,
      so the hero's copy lines up with every section below it instead of
      sitting at its own, narrower edge padding. Grows with viewport up to
@@ -1202,37 +1209,280 @@ textarea:focus-visible {
   color: var(--fg-dim);
 }
 
-.create-tabs {
+/* ---------- Create-case: "a case file open on the desk" ----------
+   /rooms/new is styled as an open manila folder sitting on the same dark
+   investigation desk as the homepage hero, not a flat form. A visible
+   heading stays in the DOM (keyboard/no-CSS/no-JS users still get it, and
+   screen readers announce it) even though the folder's own left/right
+   "pages" make a separate bordered <h1> visually redundant on top of them. */
+
+.create-case-heading {
+  margin: 0 0 1rem;
+}
+
+/* The folder's own pair of tabs sit above the desk spread, styled like two
+   manila tab labels rather than the plain underlined-link tabs used
+   elsewhere (.faq-item, .case-source-filter), to read as part of the
+   folder object rather than a generic page nav. */
+.case-tabs {
   display: flex;
-  gap: 0.5rem;
-  margin: 1rem 0 1.5rem;
-  border-bottom: 1px solid var(--border);
+  gap: 0.35rem;
+  margin: 0 0 -1px;
+  position: relative;
+  z-index: 1;
 }
 
-.create-tabs a {
-  padding: 0.5rem 0.9rem;
-  border-bottom: 2px solid transparent;
+.case-tabs a {
+  padding: 0.6rem 1.1rem;
+  border: 1px solid var(--gold-line);
+  border-bottom: none;
+  border-radius: 0.5rem 0.5rem 0 0;
+  background: var(--bg-sunken);
+  color: var(--fg-dim);
 }
 
-.create-tabs a.active {
-  border-bottom-color: var(--accent);
-  font-weight: 600;
+.case-tabs a.active {
+  background: var(--bg-raised);
   color: var(--accent-bright);
+  font-weight: 600;
+  border-color: var(--gold-line);
 }
 
-.create-case form {
+/* The desk itself: a dark, faintly textured surface framing the folder, so
+   the folder reads as an object sitting on the same investigation desk the
+   homepage hero photo shows, not a flat page background. The texture is a
+   CSS-only diagonal hairline pattern (no image request) at very low
+   opacity — a desk grain hint, not a busy pattern fighting the form. */
+.case-file-desk {
+  padding: clamp(1.25rem, 4vw, 2.5rem);
+  border-radius: 0 0.5rem 0.5rem 0.5rem;
+  background: var(--bg-sunken) repeating-linear-gradient(
+    135deg,
+    rgba(236, 231, 217, 0.015) 0px,
+    rgba(236, 231, 217, 0.015) 1px,
+    transparent 1px,
+    transparent 6px
+  );
+  border: 1px solid var(--gold-line);
+}
+
+/* The folder itself: an old-paper two-page spread. A single <form> spans
+   both "pages" (one POST, one set of field ids) laid out as a CSS grid
+   rather than two separate documents. A visible center seam (a thin
+   gradient + box-shadow pair) stands in for a binding without needing a
+   background image. */
+.case-file-form {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1.5rem;
+  background: var(--paper);
+  color: var(--paper-ink);
+  border-radius: 0.4rem;
+  box-shadow: 0 1.5rem 3rem rgba(0, 0, 0, 0.45);
+  overflow: hidden;
+}
+
+@media (min-width: 54rem) {
+  .case-file-form {
+    grid-template-columns: 1fr 1fr;
+    position: relative;
+  }
+  /* The binding/seam between the two pages — a soft shadow gradient, not an
+     image, so it scales with the folder's own size for free. */
+  .case-file-form::before {
+    content: "";
+    position: absolute;
+    inset: 0 0 0 50%;
+    width: 1.5rem;
+    margin-left: -0.75rem;
+    background: linear-gradient(
+      90deg,
+      transparent,
+      rgba(0, 0, 0, 0.12) 45%,
+      rgba(0, 0, 0, 0.12) 55%,
+      transparent
+    );
+    pointer-events: none;
+    z-index: 1;
+  }
+}
+
+/* First-load-only entrance: the folder's pages fade and settle in, roughly
+   450ms, once per page load — not replayed on every ?puzzleId= tab switch
+   (that's a plain link navigation reloading the page, which is this one
+   entrance playing again, same as any page load) and not forced on a reader
+   who has to click something first. Gated behind no-preference exactly like
+   this site's other ambient motion (the hero mist, the fade-in-up hero
+   copy), and every bit of content inside is already in the server-rendered
+   HTML regardless of whether this animation runs — nothing starts at
+   opacity 0 without JS or with the media query turned off. */
+@media (prefers-reduced-motion: no-preference) {
+  .case-file-left {
+    animation: case-file-page-in 0.45s ease-out both;
+  }
+  .case-file-right {
+    animation: case-file-page-in 0.45s ease-out 0.08s both;
+  }
+}
+
+@keyframes case-file-page-in {
+  from {
+    opacity: 0;
+    transform: translateY(0.5rem);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* The brief swap-fade when the picker's selection changes, independent of
+   the one-time entrance above — short, and only restyles already-present
+   markup the JS just replaced, never used to hide no-JS content. */
+@media (prefers-reduced-motion: no-preference) {
+  .case-file-left-swap {
+    animation: case-file-fade 0.25s ease-out;
+  }
+}
+
+@keyframes case-file-fade {
+  from {
+    opacity: 0.3;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.case-file-left,
+.case-file-right {
+  padding: clamp(1.25rem, 4vw, 2rem);
+}
+
+.case-file-left {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.case-file-cover {
+  aspect-ratio: 16 / 10;
+  border-radius: 0.3rem;
+  overflow: hidden;
+  border: 1px solid rgba(11, 14, 26, 0.15);
+  background: rgba(11, 14, 26, 0.06);
+}
+
+.case-file-cover img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+/* The sealed/"Surprise me" and author-mode covers share one treatment: a
+   centered glyph on a flat tinted panel, never a photo standing in for a
+   story that either doesn't exist yet (a case not yet written) or is
+   deliberately not revealed (a random pick not yet made). */
+.case-file-cover-sealed,
+.case-file-cover-author {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: color-mix(in srgb, var(--paper-ink) 8%, var(--paper));
+}
+
+.case-file-seal {
+  font-family: Georgia, serif;
+  font-size: 2.5rem;
+  color: color-mix(in srgb, var(--paper-ink) 45%, transparent);
+}
+
+.case-file-source {
+  margin: 0;
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: color-mix(in srgb, var(--paper-ink) 65%, transparent);
+}
+
+.case-file-title {
+  margin: 0;
+  font-size: 1.3rem;
+  color: var(--paper-ink);
+}
+
+.case-file-premise {
+  margin: 0;
+  color: color-mix(in srgb, var(--paper-ink) 80%, transparent);
+}
+
+.case-file-title-input {
+  font-family: Georgia, "Iowan Old Style", "Palatino Linotype", serif;
+  font-size: 1.1rem;
+}
+
+.case-file-field-label {
+  margin-top: 0.4rem;
+}
+
+.case-file-left label,
+.case-file-left input,
+.case-file-left textarea {
+  font: inherit;
+}
+
+.case-file-left input,
+.case-file-left textarea {
+  background: color-mix(in srgb, var(--paper) 92%, var(--paper-ink));
+  border-color: rgba(11, 14, 26, 0.25);
+  color: var(--paper-ink);
+}
+
+.case-file-right {
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
-  max-width: 32rem;
+  background: var(--bg-raised);
 }
 
-.puzzle-preview {
-  padding: 0.75rem;
-  border: 1px solid var(--gold-line);
-  border-radius: 0.4rem;
-  background: var(--bg-raised);
-  font-style: italic;
+.case-file-room-heading {
+  margin: 0;
+  font-size: 1.15rem;
+}
+
+.case-file-right-blurb {
+  margin: 0 0 0.25rem;
+  font-size: 0.9rem;
+  color: var(--fg-dim);
+}
+
+.case-file-hint {
+  font-weight: 400;
+  font-size: 0.85rem;
+  color: var(--fg-faint);
+}
+
+.case-file-submit {
+  margin-top: 0.5rem;
+  width: 100%;
+  border: none;
+  cursor: pointer;
+  font: inherit;
+}
+
+.case-file-back-link {
+  text-align: center;
+  font-size: 0.9rem;
+}
+
+@media (max-width: 54rem) {
+  /* Single column, story page first then room settings — never side by
+     side cramped into a narrow viewport, and never absolutely positioned
+     over the form. */
+  .case-file-form::before {
+    display: none;
+  }
 }
 
 .checkbox-label {

@@ -4,7 +4,7 @@
 // new bytes at the same URL leaves already-open tabs stuck on the stale
 // cached copy until a hard refresh. A query string is enough to bust that
 // cache; it doesn't need to be a build hash since this repo has no bundler.
-const RELEASE = "20261028-hero-continuity-1";
+const RELEASE = "20261028-case-file-1";
 
 export function asset(path: string): string {
   return `${path}?v=${RELEASE}`;
