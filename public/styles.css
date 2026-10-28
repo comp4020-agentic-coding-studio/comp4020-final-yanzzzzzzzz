@@ -32,6 +32,12 @@ body {
   background: var(--bg);
   font-size: 1rem;
   line-height: 1.7;
+  /* The hero's full-bleed `width: 100vw` trick (below) can read a few
+     pixels wider than the visible viewport on a desktop browser with a
+     non-overlay scrollbar, since 100vw includes the scrollbar's own width.
+     Clipping horizontal overflow here is what keeps that a non-issue rather
+     than a visible horizontal scrollbar on an otherwise normal page. */
+  overflow-x: hidden;
 }
 
 h1,
