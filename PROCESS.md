@@ -2041,3 +2041,6 @@ author mode (the DOM-order claim above, not just a visual claim).
 **Not done in this pass**: the page-flip transition and cover-upload work
 the same session also asked for — tracked as separate, independently
 committed passes below, per the user's own "readability first" ordering.
+
+Commit: [`02bdaca`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-yanzzzzzzzz/commit/02bdaca).
+Local only, not pushed, per this session's explicit authorization.
