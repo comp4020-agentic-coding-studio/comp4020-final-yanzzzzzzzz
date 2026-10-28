@@ -6,6 +6,10 @@ dist/
 .data-test/
 .data*/
 
+# local-only scratch scripts for spawning a throwaway server/test run against
+# an isolated port + DATA_DIR during development — not part of the app
+.devtools/
+
 # editor and OS junk
 .DS_Store
 ._*

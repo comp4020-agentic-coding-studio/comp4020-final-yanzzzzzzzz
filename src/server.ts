@@ -36,6 +36,16 @@ app.get("/", (c) => {
     homePage({ rooms, profile, reasoningSeconds: totalReasoningSeconds(), featuredPuzzles }),
   );
 });
+// Hono's built-in mime map has no ".ogg" entry (only the rarer ".oga"), so
+// serveStatic below would otherwise send this one file as
+// application/octet-stream — harmless to a browser (the <audio> tag's own
+// canPlayType check doesn't consult the HTTP header), but wrong enough to
+// matter for anything else fetching it directly. Corrected AFTER next(),
+// since serveStatic sets its own Content-Type header unconditionally.
+app.use("/audio/creepy-ambient.ogg", async (c, next) => {
+  await next();
+  c.header("Content-Type", "audio/ogg");
+});
 app.use("/*", serveStatic({ root: "./public" }));
 app.route("/", readmeRoute);
 app.route("/", aboutRoute);

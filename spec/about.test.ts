@@ -22,10 +22,10 @@ it("serves a short player-facing /about page, distinct from the technical /readm
   }
 });
 
-it("still points the site nav's About link at /about, not /readme/", async () => {
+it("links to /about from the site footer, not the main nav", async () => {
   const res = await fetch(new URL("/", baseUrl));
   const html = await res.text();
-  expect(html).toMatch(/<nav class="site-nav">\s*<a href="\/about">About<\/a>/);
+  expect(html).toMatch(/<footer class="site-footer">[\s\S]*<a href="\/about">About<\/a>/);
 });
 
 it("/readme/ is still served and still passes the invariant (technical docs, not removed)", async () => {

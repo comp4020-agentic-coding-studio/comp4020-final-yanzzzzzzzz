@@ -201,5 +201,6 @@ export function homePage(args: {
     <script src="/lobby.js"></script>
     `,
     profile,
+    "home",
   );
 }

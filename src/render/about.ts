@@ -53,8 +53,12 @@ export function aboutPage(profile?: Profile): string {
         <a href="/" class="button-link-outline">Back to lobby</a>
       </div>
 
-      <p class="about-footnote">
-        <a href="/readme/">Technical documentation</a>
+      <h2 id="music-credits">Music credits</h2>
+      <p>
+        Background music is <a href="https://opengameart.org/content/creepy-ambient-loop">"Creepy Ambient Loop"</a>
+        by epb9000, released under
+        <a href="https://creativecommons.org/publicdomain/zero/1.0/">CC0 1.0 (public domain)</a>.
+        See <a href="/readme/">technical documentation</a> and <code>ASSET_LICENSES.md</code> for the full attribution.
       </p>
     </section>
     `,

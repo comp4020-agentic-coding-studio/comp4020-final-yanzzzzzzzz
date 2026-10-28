@@ -47,5 +47,6 @@ export function casesPage(args: { puzzles: CaseListing[]; profile: Profile; q?: 
     </section>
     `,
     profile,
+    "cases",
   );
 }
