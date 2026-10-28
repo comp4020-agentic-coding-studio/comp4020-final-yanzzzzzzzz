@@ -33,6 +33,12 @@ async function heroDerivatives() {
       .toFile(path.join(outDir, `hero-mystery-${width}.webp`));
     console.log(`wrote hero-mystery-${width}.webp`);
   }
+  // A single JPEG fallback (not a full responsive set) for the <img> inside
+  // the hero's <picture> — only reached by a browser too old to support
+  // webp at all, so one mid-size file is enough; every evergreen browser
+  // uses the webp <source> set above instead.
+  await sharp(src).resize({ width: 1200 }).jpeg({ quality: 78 }).toFile(path.join(outDir, "hero-mystery-1200.jpg"));
+  console.log("wrote hero-mystery-1200.jpg");
   // A second, differently-cropped derivative of the SAME photo — the
   // desk/ledger corner, not the bowl — used as the shared "case archive"
   // cover for every built-in/player case that doesn't have its own

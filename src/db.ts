@@ -384,6 +384,7 @@ export function createAuthoredPuzzle(args: {
 // to show it.
 export function listAvailablePuzzles(search?: string): {
   id: string;
+  slug: string | null;
   title: string;
   premise: string;
   authorLabel: string | null;
@@ -393,14 +394,14 @@ export function listAvailablePuzzles(search?: string): {
   const rows = (
     like
       ? db.prepare(
-          `SELECT p.id, p.title, p.premise, p.author_session_id AS authorSessionId,
+          `SELECT p.id, p.slug, p.title, p.premise, p.author_session_id AS authorSessionId,
                   (SELECT COUNT(*) FROM rooms r WHERE r.puzzle_id = p.id) AS usageCount
            FROM puzzles p
            WHERE p.shared = 1 AND (p.title LIKE ? ESCAPE '\\' OR p.premise LIKE ? ESCAPE '\\')
            ORDER BY p.created_at DESC`,
         )
       : db.prepare(
-          `SELECT p.id, p.title, p.premise, p.author_session_id AS authorSessionId,
+          `SELECT p.id, p.slug, p.title, p.premise, p.author_session_id AS authorSessionId,
                   (SELECT COUNT(*) FROM rooms r WHERE r.puzzle_id = p.id) AS usageCount
            FROM puzzles p
            WHERE p.shared = 1
@@ -408,6 +409,7 @@ export function listAvailablePuzzles(search?: string): {
         )
   ).all(...(like ? [like, like] : [])) as {
     id: string;
+    slug: string | null;
     title: string;
     premise: string;
     authorSessionId: string | null;
@@ -415,6 +417,7 @@ export function listAvailablePuzzles(search?: string): {
   }[];
   return rows.map((r) => ({
     id: r.id,
+    slug: r.slug,
     title: r.title,
     premise: r.premise,
     usageCount: r.usageCount,

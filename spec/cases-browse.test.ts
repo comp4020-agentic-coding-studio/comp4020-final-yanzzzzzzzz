@@ -8,11 +8,11 @@ function parseCookie(setCookieHeaders: string[]): string {
   return sessionCookie.split(";")[0];
 }
 
-it("homepage sends 'Start a new case' and 'Browse every case' to two different places", async () => {
+it("homepage sends 'Create a room' and 'Explore cases' to two different places", async () => {
   const res = await fetch(new URL("/", baseUrl));
   const html = await res.text();
-  const start = html.match(/<a href="([^"]+)" class="button-link">Start a new case<\/a>/);
-  const browse = html.match(/<a href="([^"]+)" class="button-link-outline">Browse every case<\/a>/);
+  const start = html.match(/<a href="([^"]+)" class="button-link[^"]*">Create a room<\/a>/);
+  const browse = html.match(/<a href="([^"]+)" class="button-link-outline[^"]*">Explore cases<\/a>/);
   expect(start?.[1]).toBe("/rooms/new");
   expect(browse?.[1]).toBe("/cases");
   expect(start?.[1]).not.toBe(browse?.[1]);

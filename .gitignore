@@ -9,6 +9,7 @@ dist/
 # local-only scratch scripts for spawning a throwaway server/test run against
 # an isolated port + DATA_DIR during development — not part of the app
 .devtools/
+.test-server-*.pid
 
 # editor and OS junk
 .DS_Store

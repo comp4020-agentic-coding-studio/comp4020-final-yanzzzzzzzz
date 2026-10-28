@@ -13,7 +13,11 @@
   }
 
   function statusLabel(status) {
-    return status === "waiting" ? "🆕 Not started yet" : "🔎 In progress";
+    return status === "waiting" ? "Not started yet" : "In progress";
+  }
+
+  function statusClass(status) {
+    return status === "waiting" ? "case-status-waiting" : "case-status-active";
   }
 
   // Mirrors src/render/home.ts's caseCardHtml().
@@ -24,13 +28,13 @@
         <h3>${roomName}</h3>
         <p class="case-card-puzzle">playing <strong>${escapeHtml(room.title)}</strong></p>
         <p class="case-card-meta">
-          <span class="case-code">Code: <code>${room.code}</code></span>
-          <span class="case-host">👑 ${escapeHtml(room.hostLabel)}</span>
-          <span class="case-status">${statusLabel(room.status)}</span>
-          <span class="case-players">👥 ${room.players}</span>
+          <span class="case-code">Code <code>${room.code}</code></span>
+          <span class="case-host">Hosted by ${escapeHtml(room.hostLabel)}</span>
+          <span class="case-status ${statusClass(room.status)}">${statusLabel(room.status)}</span>
+          <span class="case-players">${room.players} online</span>
         </p>
       </div>
-      <a href="/rooms/${room.code}" class="case-join">Join</a>
+      <a href="/rooms/${room.code}" class="case-join">Join case</a>
     `;
   }
 
