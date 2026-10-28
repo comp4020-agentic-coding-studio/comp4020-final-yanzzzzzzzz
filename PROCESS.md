@@ -1622,3 +1622,124 @@ own standing rule:
   session's explicit, narrower-than-usual authorization (same pattern as the
   earlier nav/community pass in this file) — every commit above sits on
   local `main` only.
+
+## Decluttering the hero, from a direct visual review
+
+Same narrower authorization as the pass immediately above: local changes,
+local tests, commits only — no push, no deploy, overriding this file's own
+"push every commit immediately" rule for this session too.
+
+The user reviewed the rendered homepage locally (against this session's own
+isolated preview, not the live Fly deploy) and gave a specific complaint:
+the hero's left column — full headline, a two-sentence blurb, two CTAs, an
+inline join-by-code form, and the content warning — was stacked into one
+cramped column, crowding the primary actions and leaving the photo's right
+side (the bowl, the lamp, the magnifying glass the composition was shot
+around) with no real visual room, with the same problem worse on mobile
+where the column is the whole viewport.
+
+One commit
+([`72ad1b5`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-yanzzzzzzzz/commit/72ad1b5))
+addressed every specific point raised, all scoped to `src/render/home.ts`
+and `public/styles.css`:
+
+- **Copy, cut not rewritten.** The hero blurb collapsed from a two-sentence
+  paragraph to one line ("Unravel strange stories with friends, one question
+  at a time.") — the detail it used to carry (yes/no/irrelevant questions,
+  play alone or with friends, join by code) was already fully covered by the
+  existing "How it plays" section further down the page, so this is a
+  de-duplication, not a loss of information. The gold "Ask together. Uncover
+  the truth." tagline was kept exactly as the user specified.
+- **Headline sized to fit, not just shrunk.** `h1`'s `font-size` clamp
+  dropped from `(1.75rem, 4vw, 2.5rem)` to `(1.5rem, 3.2vw, 2.1rem)` and
+  gained a `max-width: 20ch`, so on desktop it wraps to at most two lines
+  instead of running wide and fighting the CTAs below it for vertical space.
+- **Text column narrowed.** `.hero-copy`'s `max-width` went from `36rem` to
+  `28rem` — the specific ask was "leave the right side of the hero clear for
+  the bowl and lamp," and a narrower text column is what actually does that,
+  not just smaller text within the same wide box.
+- **Join-by-code demoted and moved out of the hero.** It's now a separate
+  `.join-strip` section directly below the hero — its own band with a raised
+  background, not mixed into the hero's CTA group. The label reads "Have an
+  invitation code?" (the user's specified English wording) and the submit
+  button is a plain bordered `.join-button`, not another `.button-link`/
+  `.button-link-outline`, so there are still only two emphasized actions
+  (gold "Create a room," bordered "Explore cases") rather than three
+  competing CTAs. The existing GET `/join` + `?code=` submit/Enter behavior
+  is untouched — only the surrounding markup/CSS moved.
+- **Content warning: moved, and recolored to red as explicitly required.**
+  It's no longer inside the hero at all — it now lives in a new, centered
+  `.below-hero-info` section under the hero and the join strip, alongside
+  the reasoning-time stat (same section, matching spacing, per the
+  instruction that the two should sit together with "reasonable spacing").
+  Color changed from the old gold-bordered amber chip
+  (`border: 1px solid color-mix(in srgb, orange 45%, transparent)`) to a
+  soft, legible red text color (`#e8a3a3`, picked for contrast against the
+  `--bg: #0b0e1a` ink-navy background) with no border, no background fill,
+  and no animation — matching the instruction's "soft but high-contrast red,
+  no gold border, no red background, no blinking" precisely rather than
+  approximately. The small ⚠️ icon stays, now in its own
+  `.content-warning-icon` span.
+- **A real narrow-viewport fix, not just smaller fonts.** On desktop the
+  hero's left-to-right gradient works because the text column only occupies
+  part of the frame's width; below `40rem` that column *is* the frame's
+  width, so the same gradient would have darkened almost the entire photo.
+  A `@media (max-width: 40rem)` block switches to a bottom-anchored vignette
+  instead (dark at the bottom where the text sits, clear above it) and
+  shortens the hero's `min-height` — the brief's own "a mobile viewport must
+  show a visible scene, not be fully covered by overlay and copy" is a
+  layout-shape problem, not a sizing one, so the fix changes the gradient's
+  direction rather than just its opacity.
+- **Reasoning stat, shortened wording only.** Copy shortened to "of shared
+  reasoning across all rooms" (from "of real reasoning time logged across
+  every room, together"); the underlying `recordHeartbeat`/
+  `totalReasoningSeconds` accounting documented earlier in this file
+  (server-clock-trusted, idle/restart-proof, deduped per session) is
+  completely unchanged — only `formatReasoningTime()`'s string changed, not
+  the number it formats. Sub-minute totals now read "Less than a minute"
+  instead of "0 seconds"/"N seconds", a small accuracy improvement (a raw
+  second count under a minute reads as more precision than the heartbeat
+  interval actually guarantees) rather than a hedge to hide a wrong number —
+  `spec/reasoning-time.test.ts` asserts against the numeric
+  `data-reasoning-seconds` attribute, never the formatted string, so no test
+  needed to change for this.
+- **Cache-busted.** `src/render/asset.ts`'s `RELEASE` bumped to
+  `20261028-hero-declutter-1` so the changed `/styles.css` and homepage
+  markup aren't served stale to a tab already open from before this commit,
+  the same mechanism documented earlier in this file for the exact same
+  class of bug.
+
+Deliberately **not** touched, to keep this pass scoped to the hero
+specifically: the case library, room pages, and community pages were left
+as-is; `.featured-card`'s existing 3-line `-webkit-line-clamp` on
+`.featured-premise` and its existing `.featured-play` bottom-left alignment
+(via `flex: 1` on `.featured-body` and `.featured-premise`) already matched
+what was asked for the featured cards, so nothing needed changing there;
+no new animation or decorative element was added anywhere.
+
+**Verified**, not just reasoned about: `pnpm typecheck` and `pnpm build`
+both clean; full suite **79/79 across 17 files**, unchanged from before this
+pass — no existing test pinned the old hero copy string, the join form's old
+position, or the content warning's prior CSS, so nothing needed loosening or
+rewriting to let this land. Run against an isolated local server (`PORT=8082`,
+its own throwaway `DATA_DIR`, `ALLOW_MOCK_JUDGE=1`) started and torn down by
+a disposable Node wrapper script (spawned the server as a child process with
+env vars set directly on its `env`, rather than an inline shell env-prefix,
+specifically to avoid this session's shell-prefix permission-approval
+friction) — never the user's own 8081/8083 preview processes, which stayed
+running and untouched throughout. Also fetched the rendered homepage
+directly from that isolated server afterward and grepped it for every new
+class name (`hero-copy`, `join-strip`, `below-hero-info`,
+`content-warning-icon`, etc.) to confirm the actual served markup matches
+what's described above, not just the diff. The wrapper/inspection scripts
+were deleted after use — they aren't part of the shipped app and were never
+committed.
+
+**Not verified in this session**: an actual browser render at a real mobile
+width or on the user's own machine — this environment still has no GUI
+browser, the same standing limitation recorded in every prior visual-pass
+entry in this file. The user's local preview (restarted by Codex after this
+commit, on port 8083) is the next real visual check, not this session.
+
+Commit: [`72ad1b5`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-yanzzzzzzzz/commit/72ad1b5).
+Local only, not pushed, per this session's explicit authorization.
