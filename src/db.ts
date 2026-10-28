@@ -78,6 +78,25 @@ db.exec(`
     session_id TEXT PRIMARY KEY REFERENCES sessions(id),
     last_heartbeat_at TEXT NOT NULL
   );
+
+  -- Community story reviews. One row per (session, puzzle): a session can
+  -- revisit and UPDATE its own review (hence the UNIQUE constraint doubling
+  -- as the "edit, don't duplicate" rule), never another session's. Only ever
+  -- written for a puzzle that's shared=1 at write time — see routes/community.ts
+  -- for the server-side visibility check this table alone can't enforce.
+  CREATE TABLE IF NOT EXISTS story_reviews (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    puzzle_id TEXT NOT NULL REFERENCES puzzles(id),
+    session_id TEXT NOT NULL REFERENCES sessions(id),
+    rating INTEGER CHECK (rating IS NULL OR (rating BETWEEN 1 AND 5)),
+    body TEXT NOT NULL,
+    spoiler INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE (puzzle_id, session_id)
+  );
+
+  CREATE INDEX IF NOT EXISTS story_reviews_puzzle ON story_reviews(puzzle_id, created_at DESC);
 `);
 
 // Adds a column only if a prior boot (an older image, or /data carried over
@@ -746,4 +765,131 @@ export function lastQuestionAt(roomId: string, sessionId: string): string | unde
     )
     .get(roomId, sessionId) as { created_at: string } | undefined;
   return row?.created_at;
+}
+
+// --- Community story reviews ---------------------------------------------
+
+export interface StoryReview {
+  id: number;
+  puzzleId: string;
+  puzzleTitle: string;
+  sessionId: string;
+  reviewerLabel: string;
+  reviewerAvatar: string | null;
+  rating: number | null;
+  body: string;
+  spoiler: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// A plain profile lookup (same shape as hostLabel()): a review's byline is
+// "whoever this session publicly is," not a room-scoped participant label —
+// reviews aren't tied to any room, so there's no "Anonymous Detective#N" to
+// fall back to, only a nickname or a generic "Anonymous reviewer."
+function reviewerLabel(sessionId: string): { label: string; avatar: string | null } {
+  const profile = getProfile(sessionId);
+  return { label: profile.nickname ?? "Anonymous reviewer", avatar: profile.avatar };
+}
+
+function rowToStoryReview(row: {
+  id: number;
+  puzzle_id: string;
+  puzzle_title: string;
+  session_id: string;
+  rating: number | null;
+  body: string;
+  spoiler: number;
+  created_at: string;
+  updated_at: string;
+}): StoryReview {
+  const { label, avatar } = reviewerLabel(row.session_id);
+  return {
+    id: row.id,
+    puzzleId: row.puzzle_id,
+    puzzleTitle: row.puzzle_title,
+    sessionId: row.session_id,
+    reviewerLabel: label,
+    reviewerAvatar: avatar,
+    rating: row.rating,
+    body: row.body,
+    spoiler: Boolean(row.spoiler),
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+const STORY_REVIEW_COLUMNS =
+  "sr.id, sr.puzzle_id, p.title AS puzzle_title, sr.session_id, sr.rating, sr.body, sr.spoiler, sr.created_at, sr.updated_at";
+
+// Only ever reads a review whose puzzle is CURRENTLY shared=1 — a puzzle
+// that's never had its visibility flipped off today, but the join guards
+// against that existing surface ever silently leaking a review for a since-
+// privatized story, same spirit as listAvailablePuzzles()'s own join.
+export function listReviews(puzzleId?: string): StoryReview[] {
+  const rows = (
+    puzzleId
+      ? db
+          .prepare(
+            `SELECT ${STORY_REVIEW_COLUMNS} FROM story_reviews sr
+             JOIN puzzles p ON p.id = sr.puzzle_id AND p.shared = 1
+             WHERE sr.puzzle_id = ?
+             ORDER BY sr.created_at DESC`,
+          )
+          .all(puzzleId)
+      : db
+          .prepare(
+            `SELECT ${STORY_REVIEW_COLUMNS} FROM story_reviews sr
+             JOIN puzzles p ON p.id = sr.puzzle_id AND p.shared = 1
+             ORDER BY sr.created_at DESC`,
+          )
+          .all()
+  ) as Parameters<typeof rowToStoryReview>[0][];
+  return rows.map(rowToStoryReview);
+}
+
+export function getOwnReview(puzzleId: string, sessionId: string): StoryReview | undefined {
+  const row = db
+    .prepare(
+      `SELECT ${STORY_REVIEW_COLUMNS} FROM story_reviews sr
+       JOIN puzzles p ON p.id = sr.puzzle_id
+       WHERE sr.puzzle_id = ? AND sr.session_id = ?`,
+    )
+    .get(puzzleId, sessionId) as Parameters<typeof rowToStoryReview>[0] | undefined;
+  return row ? rowToStoryReview(row) : undefined;
+}
+
+// A session's own most recent review write, across every puzzle — the
+// posting-cooldown clock. Deliberately not scoped to one puzzle: the per-
+// (puzzle, session) UNIQUE constraint already stops duplicate rows for the
+// same story, so the thing a cooldown actually has to slow down is rapid
+// posting/editing across different stories.
+export function lastReviewWriteAt(sessionId: string): string | undefined {
+  const row = db
+    .prepare("SELECT updated_at FROM story_reviews WHERE session_id = ? ORDER BY updated_at DESC LIMIT 1")
+    .get(sessionId) as { updated_at: string } | undefined;
+  return row?.updated_at;
+}
+
+// INSERT-or-UPDATE keyed by the table's own (puzzle_id, session_id) UNIQUE
+// constraint: a session reviewing a puzzle it already reviewed updates that
+// one row in place rather than ever creating a second — this is the whole
+// mechanism behind "one review per session per story, author can edit,
+// nobody else can."
+export function upsertReview(args: {
+  puzzleId: string;
+  sessionId: string;
+  rating: number | null;
+  body: string;
+  spoiler: boolean;
+}): void {
+  db.prepare(
+    `INSERT INTO story_reviews (puzzle_id, session_id, rating, body, spoiler, updated_at)
+     VALUES (?, ?, ?, ?, ?, datetime('now'))
+     ON CONFLICT (puzzle_id, session_id) DO UPDATE SET
+       rating = excluded.rating,
+       body = excluded.body,
+       spoiler = excluded.spoiler,
+       updated_at = datetime('now')`,
+  ).run(args.puzzleId, args.sessionId, args.rating, args.body, args.spoiler ? 1 : 0);
 }

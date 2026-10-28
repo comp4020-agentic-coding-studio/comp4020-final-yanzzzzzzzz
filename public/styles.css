@@ -853,6 +853,13 @@ textarea:focus-visible {
   flex: 1;
 }
 
+.case-browse-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+}
+
 .about h2 {
   margin-top: 2rem;
 }

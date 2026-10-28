@@ -16,7 +16,10 @@ function caseListingHtml(puzzle: CaseListing): string {
     <h3>${escapeHtml(puzzle.title)}</h3>
     <p class="case-browse-author">${by} · used ${puzzle.usageCount}×</p>
     <p class="case-browse-premise">${escapeHtml(puzzle.premise)}</p>
-    <a href="/rooms/new?puzzleId=${encodeURIComponent(puzzle.id)}" class="button-link-outline">Play this case</a>
+    <div class="case-browse-actions">
+      <a href="/rooms/new?puzzleId=${encodeURIComponent(puzzle.id)}" class="button-link-outline">Play this case</a>
+      <a href="/community?puzzleId=${encodeURIComponent(puzzle.id)}">Read reviews</a>
+    </div>
   </li>`;
 }
 

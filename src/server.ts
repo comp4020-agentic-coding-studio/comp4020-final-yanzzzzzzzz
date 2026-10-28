@@ -8,6 +8,7 @@ import { casesRoute } from "./routes/cases.ts";
 import { rooms } from "./routes/rooms.ts";
 import { lobby } from "./routes/lobby.ts";
 import { profileRoute } from "./routes/profile.ts";
+import { communityRoute } from "./routes/community.ts";
 import {
   getProfile,
   hostLabel,
@@ -53,6 +54,7 @@ app.route("/", casesRoute);
 app.route("/", rooms);
 app.route("/", lobby);
 app.route("/", profileRoute);
+app.route("/", communityRoute);
 
 const port = Number(process.env.PORT ?? 8080);
 serve({ fetch: app.fetch, port, hostname: "0.0.0.0" }, (info) => {
