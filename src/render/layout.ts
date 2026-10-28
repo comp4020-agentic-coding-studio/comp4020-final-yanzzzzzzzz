@@ -42,12 +42,14 @@ export function layout(title: string, body: string, profile?: Profile, activePat
 </head>
 <body>
   <header class="site-header">
-    <a class="brand" href="/">${brandIcon()}<span>Turtle Soup</span></a>
-    <nav class="site-nav" aria-label="Main">
-      ${navLink("/", "Home", activePath, "home")}
-      ${navLink("/cases", "Case Library", activePath, "cases")}
-      ${navLink("/community", "Community", activePath, "community")}
-    </nav>
+    <div class="site-header-left">
+      <a class="brand" href="/">${brandIcon()}<span>Turtle Soup</span></a>
+      <nav class="site-nav" aria-label="Main">
+        ${navLink("/", "Home", activePath, "home")}
+        ${navLink("/cases", "Case Library", activePath, "cases")}
+        ${navLink("/community", "Community", activePath, "community")}
+      </nav>
+    </div>
     <div class="site-controls">
       <button type="button" id="music-toggle" class="music-toggle" aria-pressed="false">🔈 Music off</button>
       ${identityLink(profile)}
