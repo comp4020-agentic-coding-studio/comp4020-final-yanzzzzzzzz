@@ -2261,3 +2261,74 @@ no-animation result, which Codex will preview fresh.
 
 Commit: [`a988225`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-yanzzzzzzzz/commit/a988225).
 Local only, not pushed, per this session's explicit authorization.
+
+## Pushing and deploying the 17 local-only commits above
+
+The prior several sessions (the nav/community pass, the mystery-theme pass,
+the hero-declutter/seam-fix pass, the case-file redesign/contrast-fix/
+cover-upload/no-animation pass) were each done under an explicit
+local-changes-only authorization — committed to local `main` but never
+pushed. This session's instruction explicitly lifted that restriction and
+authorized pushing and deploying all of it, reverting to this repo's
+standing CLAUDE.md rule of pushing every commit immediately.
+
+**Push**: `git push origin main` succeeded, fast-forwarding
+`origin/main` from `538e915` to
+[`862bb24`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-yanzzzzzzzz/commit/862bb24)
+— the 17 commits from `42fa12c` (original mystery-theme photography) through
+`862bb24` (linking the no-animation commit hash), spanning every pass
+documented in the sections above back to "A visual rework: the 'mystery
+investigation club / case archive' pass."
+
+**Backup before deploy**: woke the Fly machine, then ran a real SQLite
+backup over `flyctl ssh console` using `node:sqlite`'s own `backup()`
+function (the same approach used for the earlier English-translation and
+nav/community deploys documented above, not a raw file copy that could miss
+WAL-resident data) to
+`/data/app-before-community-1793189506876.db`. Verified immediately with
+`PRAGMA integrity_check` returning `ok` and real row counts (3 rooms, 10
+`qa_entries`) before the deploy touched anything. The backup file was left
+on the `/data` volume as the rollback artifact, per the procedure already
+written up earlier in this file — not pulled off Fly or copied anywhere
+else.
+
+**Deploy**: `mise exec -- flyctl deploy --remote-only --ha=false -a
+comp4020-final-yanzzzzzzzz`. The build installed the musl `sharp` binary
+(`@img/sharp-linuxmusl-x64`) correctly — the first real confirmation, on an
+actual Docker/Alpine build, of the dependency-resolution reasoning recorded
+in the cover-upload entry above, which had only been verified locally until
+now. Machine `8156d3b9771e58` came up and passed its health check. Fly's own
+post-deploy DNS check result wasn't confirmed either way from the deploy
+log in this session — per this repo's "don't assert a failure you haven't
+seen" rule, that's recorded as unconfirmed, not as a failure, especially
+since the machine's health check passing and the live site answering
+requests (next paragraph) are both independently confirmed.
+
+**Production was not reset.** No table was dropped, truncated, or
+reseeded as part of this push; the backup above exists specifically as a
+rollback artifact in case anything had gone wrong, and nothing in this
+session's deploy path called for using it.
+
+**Real-browser acceptance, scope as actually run**: loaded
+`https://comp4020-final-yanzzzzzzzz.fly.dev/rooms/new?mode=author` in a real
+browser and confirmed: the cover-image upload entry point is present and
+usable, switching to "Choose a case" no longer causes a page reload (the
+instant DOM swap from `a988225` works live, not just under `jsdom`), and the
+case-file panel's text is legible against its warm-paper background (the
+contrast fix from `02bdaca` holds on the real deployed CSS, not just the
+computed-ratio check recorded above). This is the extent of what was
+actually clicked through this session — it is not a claim that the full
+multi-player ask/judge/solve flow, the cover-upload pipeline, or any other
+flow was exercised against production this session, and no file was
+uploaded to the live site as part of this check.
+
+**Test suite**: not rerun this session. The 113/113 full suite,
+`pnpm typecheck`, and `pnpm build` all passed three times consecutively in
+the immediately preceding session (recorded in the `a988225` entry above);
+this session treated that as still current rather than re-running a suite
+whose code hadn't changed, per the user's own instruction to keep this pass
+documentation-only.
+
+**API keys**: not read, changed, or printed this session.
+
+Commits: [`538e915..862bb24`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-yanzzzzzzzz/compare/538e915...862bb24).
