@@ -2332,3 +2332,245 @@ documentation-only.
 **API keys**: not read, changed, or printed this session.
 
 Commits: [`538e915..862bb24`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-yanzzzzzzzz/compare/538e915...862bb24).
+
+## Moving the AI judge from Groq to Gemini
+
+This session's instruction was to move `src/llm.ts`'s judge off Groq onto
+Google's Gemini API, using the user's own free-tier API key (created by the
+user, to be stored as the Fly secret `GEMINI_API_KEY` by Codex in a later
+session — this session never read, printed, or asked for the real key, never
+called the real API, and made no production, billing, or access-control
+change of any kind). Scope was explicitly local-only: implement, mock-test,
+and commit; no push, no deploy, no real API call.
+
+### Picking the model and the endpoint shape
+
+Before writing any code I used WebFetch (scoped this session to
+`ai.google.dev` only) against the three URLs the instruction named —
+`/gemini-api/docs/models`, `/gemini-api/docs/pricing`, and
+`/gemini-api/docs/structured-output` — plus several follow-up fetches against
+`/gemini-api/docs/text-generation`, `/gemini-api/docs/migrate-to-interactions`,
+`/api/generate-content` (the REST reference), and `/gemini-api/docs/api-key`,
+all checked 2026-10-29. Two things the instruction assumed turned out to need
+a real check rather than a guess:
+
+- **`gemini-3.5-flash-lite` is current, not legacy.** The models page lists it
+  under Gemini 3's stable tier as "our fastest, most cost-effective 3.5 model
+  for high-throughput execution," and the pricing page confirms it's free of
+  charge for standard/priority input and output (context caching is the one
+  thing not free). The entire 2.5 family (`gemini-2.5-flash`,
+  `gemini-2.5-pro`, etc.) is explicitly flagged as "limited to users who have
+  actively used them in the past," with 3.5 Flash-Lite recommended for new
+  projects — so the instruction's own steer away from 2.5 matched what the
+  docs actually say, not just a guess. `GEMINI_MODEL` overrides the default
+  without a code change, in case that changes again.
+- **The structured-output doc has moved to a newer "Interactions API"**
+  (`POST /v1beta/interactions`), not the classic `generateContent` endpoint
+  the instruction asked for. I checked explicitly whether `generateContent`
+  still works before committing to it: the migration guide
+  (`/gemini-api/docs/migrate-to-interactions`) states plainly "While
+  `generateContent` remains fully supported, we recommend the Interactions
+  API for all new development" — fully supported, not deprecated, just not
+  the docs' featured example anymore. The REST reference
+  (`/api/generate-content`) confirms the endpoint
+  (`POST https://generativelanguage.googleapis.com/v1beta/{model}:generateContent`),
+  the `x-goog-api-key` header (never a URL query param — `/gemini-api/docs/api-key`
+  only shows the header form), `generationConfig.responseMimeType` /
+  `responseSchema`, the `Schema.type` enum using uppercase strings
+  (`STRING`/`OBJECT`/`ARRAY`, not lowercase JSON-Schema style), the `enum`
+  field for constraining a `STRING` to fixed values, `candidates[].finishReason`
+  with its full enum (`STOP`, `MAX_TOKENS`, `SAFETY`, `RECITATION`,
+  `BLOCKLIST`, `PROHIBITED_CONTENT`, `SPII`, `LANGUAGE`, `IMAGE_SAFETY`, and
+  several function-call/image-specific values not relevant here), and
+  `promptFeedback.blockReason` with its own enum (`SAFETY`, `OTHER`,
+  `BLOCKLIST`, `PROHIBITED_CONTENT`, `IMAGE_SAFETY`). I picked
+  `generateContent` over the newer Interactions API specifically because the
+  instruction asked for it by name and the reference confirms it's still a
+  real, documented, supported contract — not because I couldn't find the
+  newer one.
+
+One detail the docs didn't settle: whether a `STRING` schema field needs both
+`"format": "enum"` and the `"enum"` array, or the `enum` array alone is
+sufficient. The REST reference's own example pairs them
+(`{type:STRING, format:enum, enum:[...]}`), so `src/llm.ts`'s
+`responseSchema()` sets `type: "STRING"` with just `enum` (no explicit
+`format`) — the same minimal shape the structured-output doc's own quoted
+recipe-extractor example uses for its enum-free string fields, and consistent
+with `enum`'s own description ("possible values of the element... with enum
+format") reading as the array itself being what triggers the constraint.
+This is flagged here as something only a real call can fully confirm (see
+"What this session did NOT do" below) — if the schema turns out to need the
+explicit `format` field too, that's a one-line addition.
+
+### What changed in `src/llm.ts`
+
+Replaced the single free-text "reply" field Groq's chat-completions contract
+used with Gemini's `responseSchema`-constrained single enum field named
+`decision` — two separate schemas, one for a plain question
+(`yes`/`no`/`irrelevant`/`unknown`/`clarify`) and one for a final guess
+(`correct`/`incomplete`/`incorrect`). This was the direct fix for a real gap
+in the Groq-era judge: its question schema had no way to say "the solution
+never actually establishes this" (every question got forced into yes/no/
+irrelevant even when the honest answer was "the case doesn't say"), and no
+way to flag a bundled multi-part question for the player to split — both
+failure modes the instruction named explicitly. Splitting correctness for a
+guess into `incomplete` vs. `incorrect` was the other half: the instruction
+asked for judging "main event + causal chain + key reversal," not keyword
+overlap, and a guess that's on the right track but missing a load-bearing
+piece of the mechanism reads differently to a player than one that's flatly
+wrong — collapsing both to a single "no" (which the Groq version did) throws
+that distinction away.
+
+**Why the DB schema wasn't touched.** `qa_entries.verdict`'s CHECK constraint
+(`src/db.ts`) only allows `yes`/`no`/`irrelevant`/`correct` — unchanged since
+before this session, with real room history already written against it. The
+instruction gave two options: widen the constraint, or map the five/three-way
+decision onto the existing four values with a separate fixed-reply-text
+channel for the distinction a wider column would otherwise carry. I took the
+second: `unknown` and `clarify` both map to `irrelevant`, `incomplete` and
+`incorrect` both map to `no`, each pair keeping its own fixed English reply
+(`"Not established."` / `"Please ask one clear question."` and `"Your
+explanation is incomplete."` / `"That explanation contradicts the case."`).
+This means `SELECT DISTINCT verdict FROM qa_entries` still returns exactly
+the four values every existing row already uses, no `ALTER TABLE`, no
+rebuild-in-place migration (the kind `ensureRoomsHaveWaitingStatus()` in
+`src/db.ts` had to do for `rooms.status` — see that function's own comments
+for why that kind of migration is real work, not a formality), and no
+existing room's transcript needs reinterpreting. The cost: a player reading
+raw `qa_entries` rows directly (nobody does — every surface renders through
+`VERDICT_LABEL`/the system-entry's own reply text) would see `irrelevant` for
+two different reasons. Recorded here as the deliberate trade-off the
+instruction asked to have written down.
+
+**Prompt-injection framing.** The system prompt tells the model explicitly
+that the player's question, the room's transcript, and even the puzzle's own
+premise/solution text are DATA to judge, never instructions to obey — with a
+named list of things to refuse (reveal the solution, switch the puzzle,
+break character, call a tool, browse the web, answer with anything other
+than the one JSON field). This matters specifically because puzzles can be
+player-authored (`createAuthoredPuzzle` in `src/db.ts`), so the premise and
+solution text itself is attacker-controlled in the general case, not just the
+player's live question — `spec/gemini-judge.test.ts`'s "never sends an
+author's system-rule-breaking content as if it were part of the puzzle's own
+solution" test exercises exactly that case. No tool-use or search grounding
+is configured in the request at all (`generationConfig` carries only
+`responseMimeType`/`responseSchema`/`temperature`/`maxOutputTokens`, no
+`tools` array), so there's nothing for an injected instruction to actually
+invoke even if the model tried.
+
+**Why a question can never solve the room, enforced twice.** First,
+structurally: the question schema's own `enum` never includes `"correct"` at
+all, so a model literally cannot select it for a question (and
+`parseDecision()` would reject it as malformed if it ever somehow appeared
+outside the schema's own enforcement, e.g. a cached/stale response). Second,
+at the one call site that actually ends a room: `src/routes/rooms.ts`'s ask
+handler only calls `markSolved()` when `kind === "guess" && verdict.verdict
+=== "correct"` — not merely `verdict.verdict === "correct"` — so even a
+hypothetical future bug that let a question's verdict read `"correct"` still
+couldn't end the room without also changing that explicit `kind` check.
+
+### Concurrency: the room lock
+
+The instruction required same-room requests to be serialized, with an
+explicit busy response rather than silently racing, and no reuse of a stale
+room snapshot for a double-judge or double-solve. `src/room-lock.ts` adds a
+plain in-memory `Set<roomId>`: `tryLockRoom()` returns `false` if the room is
+already locked, `unlockRoom()` is called in a `finally` so a thrown error
+(a judge-call exception, a DB error) can never leave a room permanently
+locked out. This is correct specifically because this app's deploy shape
+(`fly.toml`) is fixed at one shared-cpu-1x machine, one process — the file's
+own comment says explicitly that a second instance sharing a room would need
+a real lock (a database row), not this. Inside the lock, the route re-reads
+the room's own status before calling the judge — not the snapshot read at
+the top of the handler — so a room solved by whichever request got the lock
+first is never judged a second time by the one that was waiting. On a guess
+that solves the room, `markSolved()` is now called before
+`broadcastLobbyCardChange()` (previously the ask route didn't call that
+broadcast on solve at all), so a client reacting to the lobby broadcast by
+re-querying the room state can never observe a lobby update for a room the
+database still calls `'active'`.
+
+Testing the actual HTTP-level race deterministically isn't possible from
+outside the process — how far two concurrent `fetch()` calls get before the
+other arrives depends on Node's own I/O scheduling, not anything a test
+controls. `spec/room-lock.test.ts` pins `src/room-lock.ts`'s own
+acquire/reject/release contract directly and deterministically (two locks on
+the same room id, independence across two different room ids, release then
+reacquire, double-unlock is a no-op). `spec/room-lifecycle.test.ts`'s new
+concurrent-ask test fires two real requests at the same room without
+awaiting between them and asserts at most one is ever turned away `busy` —
+documented in the test itself as a best-effort race, not a guaranteed
+reproduction.
+
+### Failure handling
+
+Every way a real Gemini call can fail now maps to its own
+`JudgeFailureReason` and a fixed `JUDGE_FAILURE_MESSAGES` entry, read
+directly from the REST reference's documented shapes rather than guessed:
+`401`/`403` → `unauthorized` (a deploy-config problem, not something
+retrying fixes — worded differently on purpose, same reasoning the Groq-era
+`judgeAvailability() === "unavailable"` branch already used for a missing
+key); `429` → `rate-limited`; `promptFeedback.blockReason` or a
+safety-shaped `finishReason` (`SAFETY`/`RECITATION`/`BLOCKLIST`/
+`PROHIBITED_CONTENT`/`SPII`/`LANGUAGE`/`IMAGE_SAFETY`) → `blocked`;
+`finishReason === "MAX_TOKENS"` → `truncated`, kept distinct from `blocked`
+since a token-budget cutoff and a safety refusal are different operator
+problems (one says "raise `maxOutputTokens`," the other says "the question
+itself got flagged"); no candidates at all → `empty`; anything that doesn't
+parse as the exact single-field JSON object the schema was asked for (wrong
+type, extra fields alongside `decision`, a decision value outside the kind's
+own allowed set, non-JSON text) → `malformed`; a timeout or a bare
+network-level rejection → `timeout`/`http-error`. None of these retry
+automatically — the instruction was explicit that a free-tier quota is
+finite and a judge that silently retries a `429` just spends it faster for
+no better answer — and none of them fall back to a different or paid model,
+or to the mock judge (`judgeAvailability()`'s `unavailable` path, the only
+place the mock is reachable, is checked strictly before ever attempting a
+real call, same as the Groq-era version). `temperature: 0.2` narrows
+variance but is explicitly documented in `src/llm.ts` as not a correctness
+guarantee — a low-temperature call can still answer wrong, and nothing in
+this session's changes claims otherwise.
+
+### What this session did NOT do
+
+No real `GEMINI_API_KEY` was used, read, or printed at any point — every test
+added (`spec/gemini-judge.test.ts`) stubs `global.fetch` and asserts against
+the request/response contract this file builds, never against a live Gemini
+response. **This is a contract test, not proof a real key answers
+correctly** — whether `gemini-3.5-flash-lite` actually judges a real 海龟汤
+question "yes"/"no"/"irrelevant" the way a human judge would, whether the
+free tier's real rate limits are generous enough for actual play, and
+whether the `responseSchema` the REST reference describes behaves exactly as
+documented against a live endpoint (the one point flagged as unconfirmed
+above: whether `format: "enum"` is required alongside the `enum` array) are
+all explicitly unverified and left for whoever deploys this with a real key.
+No code in this repo claims otherwise, and this entry is the authoritative
+record of that gap — report it as "implemented and mock-tested, real-key
+verification outstanding," never as "connected to Gemini."
+
+No push, no deploy, no Fly access, no production database touch, no billing
+or access-control change — this session's entire scope was local file edits,
+local commits, and a local isolated test server on port 8082 (its own
+throwaway `.data-test-8082/` `DATA_DIR`, `ALLOW_MOCK_JUDGE=1`). The user's
+own preview processes on ports 8081/8083/8084/8085 were confirmed listening
+under their original PIDs, untouched, before and after each verification pass
+in this session.
+
+### Verification run against the isolated port-8082 server
+
+`pnpm typecheck` clean, `pnpm build` clean (`dist/server.js`, 217.1kb), and
+the full suite passing — 143/143 (113 pre-existing + 30 new: 24 in
+`spec/gemini-judge.test.ts`, 4 in `spec/room-lock.test.ts`, 2 added to
+`spec/room-lifecycle.test.ts`) — run against a freshly restarted, fully
+isolated local server on port 8082.
+
+Commits:
+[`78ac977`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-yanzzzzzzzz/commit/78ac977)
+(the Gemini judge, the room lock, the mock-fetch contract tests) and
+[`86eaf68`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-yanzzzzzzzz/commit/86eaf68)
+(README.md's "The AI judge" section rewritten for Gemini, stale Groq
+references in `spec/about.test.ts`/`spec/rooms.test.ts` corrected). Both
+local only, not pushed, per this session's explicit local-changes-only
+instruction — this overrides the repo's standing commit-and-push-immediately
+rule for this session specifically, same as the instruction that originally
+lifted it back (see the entry above this one).
