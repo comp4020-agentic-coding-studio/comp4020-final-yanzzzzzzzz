@@ -59,7 +59,7 @@ function stepsHtml(): string {
   return `<ol class="how-it-works">
     <li>
       <span class="step-icon" aria-hidden="true">🥣</span>
-      <h3>Read the 汤面 (the premise)</h3>
+      <h3>Read the premise</h3>
       <p>A short, strange scene — someone did something for a reason nobody's told you.</p>
     </li>
     <li>
@@ -69,7 +69,7 @@ function stepsHtml(): string {
     </li>
     <li>
       <span class="step-icon" aria-hidden="true">🔎</span>
-      <h3>Piece together the 汤底 (the truth)</h3>
+      <h3>Piece together the truth</h3>
       <p>Submit a final guess whenever you think you've got it — solo, or with the room watching together.</p>
     </li>
   </ol>`;
@@ -149,14 +149,13 @@ export function homePage(args: {
         <h1>Turtle Soup Puzzle Room</h1>
         <p class="hero-tagline">One bowl of soup. One strange ending. The truth, found together.</p>
         <p class="hero-blurb">
-          海龟汤 ("turtle soup") is a situational-reasoning game: start from a
+          Turtle Soup is a situational-reasoning game: start from a
           short, odd premise and ask yes / no / irrelevant questions until the
           room rebuilds the full truth behind it. Play alone, or open a room
           and let friends join with just a code.
         </p>
         <p class="content-warning" role="note">
-          ⚠️ 部分故事包含恐怖 / 血腥元素，胆小慎入。
-          (Some cases include horror or gory elements — read with care.)
+          ⚠️ Some stories contain horror or graphic content. Proceed with caution.
         </p>
         <div class="hero-actions">
           <a href="/rooms/new" class="button-link">Start a new case</a>

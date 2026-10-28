@@ -391,7 +391,7 @@ export function listAvailablePuzzles(): {
     premise: r.premise,
     usageCount: r.usageCount,
     authorLabel: r.authorSessionId
-      ? (getProfile(r.authorSessionId).nickname ?? "匿名作者")
+      ? (getProfile(r.authorSessionId).nickname ?? "Anonymous author")
       : null,
   }));
 }
@@ -400,9 +400,9 @@ export function listAvailablePuzzles(): {
 // (for a lobby card) shouldn't register that session as a room participant
 // the way actually joining one does.
 export function hostLabel(sessionId: string | null): string {
-  if (!sessionId) return "未知房主";
+  if (!sessionId) return "Unknown host";
   const profile = getProfile(sessionId);
-  if (!profile.nickname) return "匿名房主";
+  if (!profile.nickname) return "Anonymous host";
   return profile.avatar ? `${profile.avatar} ${profile.nickname}` : profile.nickname;
 }
 
@@ -519,7 +519,7 @@ export function ensureParticipantLabel(roomId: string, sessionId: string): strin
   const { count } = db
     .prepare("SELECT COUNT(*) AS count FROM room_participants WHERE room_id = ?")
     .get(roomId) as { count: number };
-  const label = `匿名侦探#${count + 1}`;
+  const label = `Anonymous Detective#${count + 1}`;
   db.prepare(
     "INSERT INTO room_participants (room_id, session_id, label) VALUES (?, ?, ?)",
   ).run(roomId, sessionId, label);

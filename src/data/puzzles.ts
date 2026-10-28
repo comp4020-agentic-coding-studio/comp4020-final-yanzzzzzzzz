@@ -1,12 +1,10 @@
-// Seed bank of classic 海龟汤 (lateral-thinking / "turtle soup") puzzles,
-// written natively in Chinese — see PROCESS.md for why the English originals
-// now only exist in src/db.ts as a one-time migration-matching table, not here.
+// Seed bank of classic 海龟汤 ("turtle soup" / situation-puzzle) lateral-
+// thinking riddles, written in English.
 export interface SeedPuzzle {
   // A stable identity for reconciling this entry against a row already on
   // disk — NOT derived from the title/premise/solution text, specifically so
-  // translating or lightly rewording an entry updates the existing row in
-  // place instead of looking like a brand new puzzle. See db.ts's
-  // reconcileSeedPuzzles().
+  // editing or rewording an entry updates the existing row in place instead
+  // of looking like a brand new puzzle. See db.ts's reconcileSeedPuzzles().
   slug: string;
   title: string;
   premise: string;
@@ -18,61 +16,66 @@ export interface SeedPuzzle {
 export const SEED_PUZZLES: SeedPuzzle[] = [
   {
     slug: "turtle-soup-bowl",
-    title: "一碗海龟汤",
+    title: "A Bowl of Turtle Soup",
     premise:
-      "一个男人走进餐厅，点了一碗海龟汤。喝了一口之后，他回到座位，掏出一把枪自杀了。为什么？",
+      "A man walks into a restaurant and orders a bowl of turtle soup. After one spoonful, he goes back to his seat, pulls out a gun, and shoots himself. Why?",
     solution:
-      "多年前，这个男人遭遇海难，与同伴失散，靠吃一位已经死去的同伴留下的“海龟肉”才活了下来——但那其实是另一位遇难同伴的肉，他当时并不知情。如今第一次尝到真正的海龟汤，他发现味道和当年吃的完全不同，终于明白自己当年究竟靠什么活了下来，无法承受这个真相，于是开枪自尽。",
+      "Years earlier, the man was shipwrecked and separated from his companions, surviving by eating what he was told was turtle meat from a castaway who died — it was actually a companion's flesh, but he was never told. Tasting real turtle soup for the first time, he realized it tasted nothing like what he'd eaten back then, understood what he'd really survived on, and couldn't live with the truth.",
   },
   {
     slug: "silent-phone-call",
-    title: "午夜无声电话",
-    premise: "一个女人深夜听到电话铃响。她接起电话，一言不发，挂断后立刻报了警。为什么？",
+    title: "The Silent Phone Call",
+    premise:
+      "A woman hears the phone ring in the middle of the night. She answers, says nothing, hangs up, and immediately calls the police. Why?",
     solution:
-      "她和丈夫事先约定好：如果深夜接到一通没有声音的电话，就代表丈夫身陷险境、无法说话，但还是设法拨通了这个暗号号码求救。她一听到那片沉默，立刻明白发生了什么，马上报了警。",
+      "She and her husband had agreed that a silent late-night call meant he was in trouble somewhere, unable to speak, but had managed to dial the prearranged number for help. She called the police the moment she heard the silence.",
   },
   {
     slug: "elevator-routine",
-    title: "电梯里的习惯",
+    title: "The Elevator Routine",
     premise:
-      "一个男人住在十楼。每天早上他乘电梯直达一楼去上班，但每天傍晚回家时，他只乘电梯到七楼，剩下的路自己走上去——除非下雨天，他才会直接乘电梯到十楼。为什么？",
+      "A man lives on the 10th floor. Every morning he takes the elevator down to the ground floor for work, but every evening he only rides the elevator up to the 7th floor and walks the rest of the way — except on rainy days, when he rides it straight to the 10th. Why?",
     solution:
-      "他是一个身材矮小的人，站在电梯里只能按到七楼的按钮。下雨天他会带伞，用伞尖够到十楼的按钮，所以才能一路坐到家。",
+      "He is a dwarf who can only reach the button for the 7th floor. On rainy days he carries an umbrella, and uses its tip to press the button for the 10th floor.",
   },
   {
     slug: "desert-parachute",
-    title: "沙漠里的降落伞",
-    premise: "沙漠中发现一具尸体，旁边放着一顶没有打开的降落伞和一根火柴。他是怎么死的？",
+    title: "The Desert Parachute",
+    premise:
+      "A body is found in the desert next to an unopened parachute and a single match. How did he die?",
     solution:
-      "他和几名乘客乘坐的飞机出了故障，必须跳伞逃生，但降落伞的数量不够分。他们抽签决定谁能拿到降落伞，他抽到了那根火柴，意味着他没有伞，还是跳了下去，落地时摔死了。",
+      "He was one of several passengers who had to jump from a failing plane with too few parachutes to go around. They drew lots to decide who got a parachute; he drew the match, meaning he had none, and died hitting the ground after jumping anyway.",
   },
   {
     slug: "avoided-gas-station",
-    title: "绕路的加油站",
+    title: "The Avoided Gas Station",
     premise:
-      "一个男人每天开车往返两座城市之间，却从不在路上一家加油站停车加油——尽管那是离他家最近、油价也最便宜的一家。为什么？",
+      "A man drives the same road between two cities every day, but he never stops at one particular gas station — even though it's the closest to his house and has the cheapest prices. Why?",
     solution:
-      "那家加油站的老板曾经和他的妻子有过一段婚外情。他无法原谅这件事，宁愿绕远路、多花钱，也绝不会去那里加油。",
+      "The gas station's owner once had an affair with his wife. He can't forgive it, so he'd rather drive out of his way and pay more than ever buy gas there.",
   },
   {
     slug: "discarded-shoes",
-    title: "被扔掉的新鞋",
-    premise: "一个女人买了一双新鞋，一回到家就把它们直接扔进了垃圾桶。为什么？",
+    title: "The Discarded Shoes",
+    premise:
+      "A woman buys a new pair of shoes, and the moment she gets home she throws them straight in the trash. Why?",
     solution:
-      "她特意为一场重要的活动买了这双鞋，但就在活动当天，她的脚严重扭伤，不得不截肢。这双鞋如今只会让她想起那只已经不在的脚，于是她把它们扔掉了。",
+      "She'd bought the shoes specifically for an important event, but on the day of the event she twisted her ankle badly enough to need an amputation. The shoes now only held painful memories of a foot she no longer had, so she threw them away.",
   },
   {
     slug: "man-and-straw",
-    title: "握着吸管的男人",
-    premise: "一个男人被发现倒在地上死去，手里紧紧攥着一根吸管，周围没有任何打斗的痕迹。他是怎么死的？",
+    title: "The Man and the Straw",
+    premise:
+      "A man is found dead on the floor, gripping a drinking straw. There's no sign of a struggle anywhere nearby. How did he die?",
     solution:
-      "他是一名潜水员，靠一根连接水面浮标的吸管状软管呼吸。有人把那个浮标当作纪念品偷走了，导致海水灌进软管，他在水下窒息溺亡。",
+      "He was a diver who breathed through a straw-like tube connected to a floating buoy on the surface. Someone stole the buoy as a souvenir while he was underwater, letting water into the tube, and he drowned.",
   },
   {
     slug: "dinner-party-soup",
-    title: "晚宴上的那碗汤",
-    premise: "一对夫妻举办了一场晚宴。一位客人喝了一口汤，便默默起身离席，第二天就提出了离婚。为什么？",
+    title: "The Dinner Party Soup",
+    premise:
+      "A couple hosts a dinner party. One guest takes a sip of the soup, quietly gets up and leaves, and files for divorce the next day. Why?",
     solution:
-      "多年前，这位客人曾和前妻一起喝过用同一个配方做的汤——那是前妻的拿手菜，她一直称之为“爱情配方”。尝到这顿晚宴上的汤做法完全不同，他才意识到，自己的妻子其实从未真正用过那个配方招待过他，由此断定这段婚姻从一开始就不是他以为的样子。",
+      "Years earlier, the guest had shared a bowl of soup made from the exact same recipe with his ex-wife — her signature dish, a recipe she'd always called her \"recipe for true love.\" Tasting that this soup was made completely differently from his own wife's version, he realized his wife had never actually used that recipe for him, and concluded their marriage had never been what he thought it was.",
   },
 ];

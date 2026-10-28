@@ -36,7 +36,7 @@
       const verdictLabel = entry.verdict ? VERDICT_LABEL[entry.verdict] ?? entry.verdict : "…";
       const verb = entry.kind === "guess" ? "guesses" : "asks";
       li.innerHTML = `
-        <p class="entry-question"><span class="entry-label">${escapeHtml(entry.label ?? "匿名侦探")}</span> ${verb}: ${escapeHtml(entry.body)}</p>
+        <p class="entry-question"><span class="entry-label">${escapeHtml(entry.label ?? "Anonymous Detective")}</span> ${verb}: ${escapeHtml(entry.body)}</p>
         <p class="entry-verdict">AI judge: <strong>${escapeHtml(verdictLabel)}</strong></p>
       `;
     }

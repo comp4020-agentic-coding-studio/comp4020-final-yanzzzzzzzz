@@ -64,11 +64,11 @@ it("distinguishes multiple anonymous sessions in the same room", async () => {
   const { code } = await createRoom();
 
   const { cookie: cookieA, html: htmlA } = await visitRoom(code);
-  expect(htmlA).toContain("匿名侦探#1");
+  expect(htmlA).toContain("Anonymous Detective#1");
 
   // A request with no cookie at all is a second, distinct anonymous session.
   const { cookie: cookieB, html: htmlB } = await visitRoom(code);
-  expect(htmlB).toContain("匿名侦探#2");
+  expect(htmlB).toContain("Anonymous Detective#2");
 
   expect(cookieA).not.toBe(cookieB);
 });

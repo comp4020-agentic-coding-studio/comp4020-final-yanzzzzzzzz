@@ -95,7 +95,7 @@ it("keeps every existing room, participant, transcript entry, and authored puzzl
     .run("room-real-1", "sess-real-1", "🐢 Riko");
   seedDb
     .prepare("INSERT INTO room_participants (room_id, session_id, label) VALUES (?, ?, ?)")
-    .run("room-real-1", "sess-real-2", "匿名侦探#2");
+    .run("room-real-1", "sess-real-2", "Anonymous Detective#2");
   seedDb
     .prepare(
       "INSERT INTO qa_entries (room_id, session_id, kind, body, verdict, label) VALUES (?, ?, ?, ?, ?, ?)",
@@ -122,7 +122,7 @@ it("keeps every existing room, participant, transcript entry, and authored puzzl
       label: string;
     }[];
     expect(participants.map((p) => p.label).sort()).toEqual([
-      "匿名侦探#2",
+      "Anonymous Detective#2",
       "🐢 Riko",
     ]);
 

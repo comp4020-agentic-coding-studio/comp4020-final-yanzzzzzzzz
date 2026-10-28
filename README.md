@@ -1,6 +1,6 @@
 # Turtle Soup Puzzle Room
 
-A multiplayer, AI-judged lateral-thinking puzzle room (海龟汤 / "turtle soup").
+A multiplayer, AI-judged lateral-thinking puzzle room ("turtle soup").
 An AI judge holds the full solution to a puzzle and only ever reveals a
 cryptic premise. Anyone with a room's code can walk in and read it
 immediately — joining is never gated — but questions only start flowing once
@@ -30,8 +30,8 @@ There's no fixed limit on how many questions a room can ask, and every case
 has exactly one solution the judge is holding from the start — a guess is
 judged against that solution, never against vibes or a hint budget.
 
-**Content note:** some cases include horror or gory elements (部分故事包含恐怖
-/ 血腥元素，胆小慎入) — read with care.
+**Content note:** some stories contain horror or graphic content. Proceed
+with caution.
 
 The homepage also shows a running total of real reasoning time spent across
 every room on the site, counted since that feature shipped (not backfilled

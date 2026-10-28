@@ -165,8 +165,10 @@ it(
 it(
   "broadcasts a live room-status event to another session when the host starts the case",
   async () => {
-    // Regression test for the bug report's "主持人开始后另一方输入区自动可用"
-    // claim. Root cause: starting a room or transferring host only ever
+    // Regression test for the bug report's claim that "after the host
+    // starts, the other party's input area becomes usable automatically"
+    // (i.e. without a manual refresh). Root cause: starting a room or
+    // transferring host only ever
     // redirected the REQUESTING session — nothing was broadcast on the
     // room's own SSE channel, so a tab already sitting on the waiting-room
     // view had no way to learn the status changed. public/client.js's fix

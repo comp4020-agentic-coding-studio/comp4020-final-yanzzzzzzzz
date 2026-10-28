@@ -50,10 +50,10 @@ function authorFormHtml(): string {
     <label for="title">Case title</label>
     <input type="text" id="title" name="title" maxlength="80" required autocomplete="off" placeholder="The Elevator Routine" />
 
-    <label for="premise">Premise (what players see — the 汤面)</label>
+    <label for="premise">Premise (what players see)</label>
     <textarea id="premise" name="premise" maxlength="1000" required rows="3"></textarea>
 
-    <label for="solution">Solution (hidden until solved — the 汤底)</label>
+    <label for="solution">Solution (hidden until solved)</label>
     <textarea id="solution" name="solution" maxlength="2000" required rows="4" placeholder="Explain the full truth, the reason, and any key detail the AI judge needs to tell a correct guess from a close one."></textarea>
 
     <label class="checkbox-label">
