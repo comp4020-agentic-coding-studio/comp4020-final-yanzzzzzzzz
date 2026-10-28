@@ -3,6 +3,8 @@ import { serve } from "@hono/node-server";
 import { serveStatic } from "@hono/node-server/serve-static";
 import { homePage } from "./render/home.ts";
 import { readmeRoute } from "./routes/readme.ts";
+import { aboutRoute } from "./routes/about.ts";
+import { casesRoute } from "./routes/cases.ts";
 import { rooms } from "./routes/rooms.ts";
 import { lobby } from "./routes/lobby.ts";
 import { profileRoute } from "./routes/profile.ts";
@@ -36,6 +38,8 @@ app.get("/", (c) => {
 });
 app.use("/*", serveStatic({ root: "./public" }));
 app.route("/", readmeRoute);
+app.route("/", aboutRoute);
+app.route("/", casesRoute);
 app.route("/", rooms);
 app.route("/", lobby);
 app.route("/", profileRoute);

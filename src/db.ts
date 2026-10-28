@@ -363,22 +363,31 @@ export function createAuthoredPuzzle(args: {
 // Never selects `solution` — the list a room-creation picker renders from
 // can't leak an answer just by existing, not merely by the UI choosing not
 // to show it.
-export function listAvailablePuzzles(): {
+export function listAvailablePuzzles(search?: string): {
   id: string;
   title: string;
   premise: string;
   authorLabel: string | null;
   usageCount: number;
 }[] {
-  const rows = db
-    .prepare(
-      `SELECT p.id, p.title, p.premise, p.author_session_id AS authorSessionId,
-              (SELECT COUNT(*) FROM rooms r WHERE r.puzzle_id = p.id) AS usageCount
-       FROM puzzles p
-       WHERE p.shared = 1
-       ORDER BY p.created_at DESC`,
-    )
-    .all() as {
+  const like = search ? `%${search.replace(/[%_]/g, (m) => `\\${m}`)}%` : null;
+  const rows = (
+    like
+      ? db.prepare(
+          `SELECT p.id, p.title, p.premise, p.author_session_id AS authorSessionId,
+                  (SELECT COUNT(*) FROM rooms r WHERE r.puzzle_id = p.id) AS usageCount
+           FROM puzzles p
+           WHERE p.shared = 1 AND (p.title LIKE ? ESCAPE '\\' OR p.premise LIKE ? ESCAPE '\\')
+           ORDER BY p.created_at DESC`,
+        )
+      : db.prepare(
+          `SELECT p.id, p.title, p.premise, p.author_session_id AS authorSessionId,
+                  (SELECT COUNT(*) FROM rooms r WHERE r.puzzle_id = p.id) AS usageCount
+           FROM puzzles p
+           WHERE p.shared = 1
+           ORDER BY p.created_at DESC`,
+        )
+  ).all(...(like ? [like, like] : [])) as {
     id: string;
     title: string;
     premise: string;

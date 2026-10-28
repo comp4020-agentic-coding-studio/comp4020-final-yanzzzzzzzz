@@ -46,7 +46,17 @@ rooms.get("/rooms/new", (c) => {
   const profile = getProfile(getOrCreateSessionId(c));
   const mode = c.req.query("mode") === "author" ? "author" : "existing";
   const notice = NOTICES[c.req.query("notice") ?? ""];
-  return c.html(newRoomPage({ mode, puzzles: listAvailablePuzzles(), profile, notice }));
+  // A ?puzzleId= only ever pre-selects a puzzle already on the public list —
+  // isPuzzleAvailable() is the same shared/built-in visibility check POST
+  // /rooms enforces, so an invalid or private id just falls back to no
+  // selection rather than preselecting (and thereby revealing the existence
+  // of) a puzzle the requester shouldn't see.
+  const requestedPuzzleId = c.req.query("puzzleId");
+  const selectedPuzzleId =
+    requestedPuzzleId && isPuzzleAvailable(requestedPuzzleId) ? requestedPuzzleId : undefined;
+  return c.html(
+    newRoomPage({ mode, puzzles: listAvailablePuzzles(), profile, notice, selectedPuzzleId }),
+  );
 });
 
 rooms.post("/rooms", async (c) => {

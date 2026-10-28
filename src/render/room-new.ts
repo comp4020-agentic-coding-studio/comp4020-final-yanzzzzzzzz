@@ -17,11 +17,12 @@ function tabsHtml(mode: "existing" | "author"): string {
   </nav>`;
 }
 
-function existingFormHtml(puzzles: PuzzleOption[]): string {
+function existingFormHtml(puzzles: PuzzleOption[], selectedPuzzleId?: string): string {
   const options = puzzles
     .map((p) => {
       const by = p.authorLabel ? ` — by ${escapeHtml(p.authorLabel)}` : " — official";
-      return `<option value="${p.id}">${escapeHtml(p.title)}${by} (used ${p.usageCount}×)</option>`;
+      const selected = p.id === selectedPuzzleId ? " selected" : "";
+      return `<option value="${p.id}"${selected}>${escapeHtml(p.title)}${by} (used ${p.usageCount}×)</option>`;
     })
     .join("\n");
 
@@ -73,8 +74,9 @@ export function newRoomPage(args: {
   puzzles: PuzzleOption[];
   profile: Profile;
   notice?: string;
+  selectedPuzzleId?: string;
 }): string {
-  const { mode, puzzles, profile, notice } = args;
+  const { mode, puzzles, profile, notice, selectedPuzzleId } = args;
   return layout(
     "Start a new case · Turtle Soup Puzzle Room",
     `
@@ -82,7 +84,7 @@ export function newRoomPage(args: {
       <h1>Start a new case</h1>
       ${notice ? `<p class="notice" role="status">${escapeHtml(notice)}</p>` : ""}
       ${tabsHtml(mode)}
-      ${mode === "existing" ? existingFormHtml(puzzles) : authorFormHtml()}
+      ${mode === "existing" ? existingFormHtml(puzzles, selectedPuzzleId) : authorFormHtml()}
     </section>
     <script src="/create-case.js"></script>
     `,

@@ -194,7 +194,7 @@ export function homePage(args: {
       <ul class="featured-list">
         ${featuredPuzzles.map(featuredCaseHtml).join("\n")}
       </ul>
-      <a href="/rooms/new" class="button-link-outline">Browse every case</a>
+      <a href="/cases" class="button-link-outline">Browse every case</a>
     </section>
 
     ${faqHtml()}
