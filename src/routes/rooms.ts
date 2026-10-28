@@ -23,7 +23,8 @@ import {
   startRoom,
   transferHost,
 } from "../db.ts";
-import { judge, judgeAvailability } from "../llm.ts";
+import { JUDGE_FAILURE_MESSAGES, judge, judgeAvailability } from "../llm.ts";
+import { tryLockRoom, unlockRoom } from "../room-lock.ts";
 import { broadcast, connectionCount, listMembers, subscribe } from "../sse.ts";
 import { getOrCreateSessionId } from "../session.ts";
 import { roomPage } from "../render/room.ts";
@@ -38,6 +39,7 @@ const COOLDOWN_MS = 5_000;
 
 const NOTICES: Record<string, string> = {
   cooldown: "Slow down — the same person has to wait a few seconds between questions.",
+  busy: "Someone else in this room just asked — wait a moment and try again.",
   "host-only": "Only the host can do that.",
   "not-started": "This case hasn't started yet — wait for the host.",
   "author-guess": "You wrote this case — let someone else crack it.",
@@ -411,72 +413,135 @@ rooms.post("/rooms/:code/ask", async (c) => {
     }
   }
 
-  // Everyone in the room sees that a verdict is pending, not just the asker —
-  // the judge call can take up to TIMEOUT_MS, and a silent few seconds reads
-  // as a dead connection rather than a slow one.
-  broadcast(room.id, Date.now(), { label, kind }, "judging");
+  // One judge call in flight per room at a time — two submissions racing
+  // the same room could otherwise both read the room as still 'active' and
+  // both call the judge, possibly both calling markSolved or double-
+  // spending free-tier quota on requests that were never going to both
+  // matter. A second request arriving while the first is still being judged
+  // gets a plain "someone else just asked" notice instead of silently
+  // queueing or racing — released in `finally` below so a thrown error
+  // can never leave the room permanently locked.
+  if (!tryLockRoom(room.id)) {
+    return c.redirect(`/rooms/${room.code}?notice=busy`, 303);
+  }
 
-  // Checked before calling judge(), not inferred from its return value: a
-  // misconfigured deploy (no GROQ_API_KEY, mock not explicitly allowed) is a
-  // standing, operator-fixable condition, not the same thing as a single
-  // slow/failed Groq call — the two need different wording so "the judge
-  // timed out, try again" isn't shown for a problem retrying can't fix.
-  if (judgeAvailability() === "unavailable") {
-    const entry = insertEntry({
+  try {
+    // Re-read the room's own status after acquiring the lock, not the
+    // snapshot read at the top of this handler — the room could have been
+    // solved by the request that held the lock just before this one got it,
+    // and an already-solved room must never be judged again (also never
+    // spends a second API call on a room nobody can still answer into).
+    const current = getRoomByCode(room.code);
+    if (!current || current.status !== "active") {
+      return c.redirect(`/rooms/${room.code}`, 303);
+    }
+
+    // Everyone in the room sees that a verdict is pending, not just the
+    // asker — the judge call can take up to the configured timeout, and a
+    // silent few seconds reads as a dead connection rather than a slow one.
+    broadcast(room.id, Date.now(), { label, kind }, "judging");
+
+    // Checked before calling judge(), not inferred from its return value: a
+    // misconfigured deploy (no GEMINI_API_KEY, mock not explicitly allowed)
+    // is a standing, operator-fixable condition, not the same thing as a
+    // single slow/failed Gemini call — the two need different wording so
+    // "the judge timed out, try again" isn't shown for a problem retrying
+    // can't fix.
+    const unavailableMessage =
+      "The AI judge isn't configured on this deploy (no GEMINI_API_KEY) — this case can't be judged right now. See README.md's \"Running locally\" / ops notes.";
+    if (judgeAvailability() === "unavailable") {
+      const entry = insertEntry({
+        roomId: room.id,
+        sessionId,
+        kind: "system",
+        body: unavailableMessage,
+        verdict: null,
+        label: null,
+      });
+      broadcast(room.id, entry.id, entry);
+      return c.redirect(`/rooms/${room.code}`, 303);
+    }
+
+    // This room's own puzzle (resolved server-side from room.puzzle_id
+    // above) and this room's own recent transcript — never anything the
+    // client supplied, and never another room's history.
+    const history = getTranscript(room.id);
+    const result = await judge(puzzle, history, question, kind);
+
+    // judge() only returns undefined when judgeAvailability() is
+    // "unavailable" — already handled above — but availability is a live
+    // env read with no snapshot guarantee across the `await` just above, so
+    // this stays a defensive fallback rather than an assumed-unreachable
+    // branch.
+    if (!result) {
+      const entry = insertEntry({
+        roomId: room.id,
+        sessionId,
+        kind: "system",
+        body: unavailableMessage,
+        verdict: null,
+        label: null,
+      });
+      broadcast(room.id, entry.id, entry);
+      return c.redirect(`/rooms/${room.code}`, 303);
+    }
+
+    if (!result.ok) {
+      const entry = insertEntry({
+        roomId: room.id,
+        sessionId,
+        kind: "system",
+        body: JUDGE_FAILURE_MESSAGES[result.reason],
+        verdict: null,
+        label: null,
+      });
+      broadcast(room.id, entry.id, entry);
+      return c.redirect(`/rooms/${room.code}`, 303);
+    }
+
+    const verdict = result.verdict;
+
+    const questionEntry = insertEntry({
       roomId: room.id,
       sessionId,
-      kind: "system",
-      body: "The AI judge isn't configured on this deploy (no GROQ_API_KEY) — this case can't be judged right now. See README.md's \"Running locally\" / ops notes.",
-      verdict: null,
-      label: null,
+      kind,
+      body: question,
+      verdict: verdict.verdict,
+      label,
     });
-    broadcast(room.id, entry.id, entry);
+    broadcast(room.id, questionEntry.id, questionEntry);
+
+    if (verdict.reply) {
+      const replyEntry = insertEntry({
+        roomId: room.id,
+        sessionId: null,
+        kind: "system",
+        body: verdict.reply,
+        verdict: null,
+        label: null,
+      });
+      broadcast(room.id, replyEntry.id, replyEntry);
+    }
+
+    // Only a correct GUESS ever solves the room — judge()/decisionToVerdict()
+    // (src/llm.ts) already guarantee a plain question can never resolve to
+    // "correct" in the first place, but this is the one place that actually
+    // ends the room for everyone, so it re-checks `kind` itself rather than
+    // trusting that guarantee alone.
+    if (kind === "guess" && verdict.verdict === "correct") {
+      // markSolved() before broadcasting the lobby-card change, so any
+      // client that reacts to that broadcast by re-querying the room (or
+      // the lobby) immediately sees the solved state — never a window
+      // where the broadcast has gone out but the database still says
+      // 'active'.
+      markSolved(room.id);
+      broadcastLobbyCardChange(room.id, room.code);
+    }
+
     return c.redirect(`/rooms/${room.code}`, 303);
+  } finally {
+    unlockRoom(room.id);
   }
-
-  const history = getTranscript(room.id);
-  const verdict = await judge(puzzle, history, question, kind);
-
-  if (!verdict) {
-    const entry = insertEntry({
-      roomId: room.id,
-      sessionId,
-      kind: "system",
-      body: "The AI judge didn't respond in time, please try again shortly.",
-      verdict: null,
-      label: null,
-    });
-    broadcast(room.id, entry.id, entry);
-    return c.redirect(`/rooms/${room.code}`, 303);
-  }
-
-  const questionEntry = insertEntry({
-    roomId: room.id,
-    sessionId,
-    kind,
-    body: question,
-    verdict: verdict.verdict,
-    label,
-  });
-  broadcast(room.id, questionEntry.id, questionEntry);
-
-  if (verdict.reply) {
-    const replyEntry = insertEntry({
-      roomId: room.id,
-      sessionId: null,
-      kind: "system",
-      body: verdict.reply,
-      verdict: null,
-      label: null,
-    });
-    broadcast(room.id, replyEntry.id, replyEntry);
-  }
-
-  if (verdict.verdict === "correct") {
-    markSolved(room.id);
-  }
-
-  return c.redirect(`/rooms/${room.code}`, 303);
 });
 
 rooms.post("/rooms/:code/heartbeat", async (c) => {

@@ -18,6 +18,7 @@
   // can land on.
   const NOTICE_TEXT = {
     cooldown: "Slow down — the same person has to wait a few seconds between questions.",
+    busy: "Someone else in this room just asked — wait a moment and try again.",
     "not-started": "This case hasn't started yet — wait for the host.",
     "author-guess": "You wrote this case — let someone else crack it.",
   };
