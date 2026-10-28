@@ -959,3 +959,98 @@ of UI chrome/navigation/forms (only the puzzle content and auto-labels were
 translated so far, as part of the migration-safety work above) and the
 visual "案件馆" (case-file) theme rework — resuming both now that the
 live-sync report is fixed and regression-tested.
+
+## Reversing course: back to English, for the whole app
+
+A new instruction explicitly superseded the Chinese direction above: translate
+every piece of first-party content back to English — the nine puzzles'
+title/premise/solution, the auto-generated anonymous-detective/host/author
+labels, the content-warning line, home.ts's step headings, and README's
+intro — and ship it, not just change the plan. This is a deliberate reversal
+of the "Chinese translation" entries two sections up, recorded here rather
+than silently overwritten: the brief doesn't fix a language, and the user's
+latest, more specific instruction governs over the session that came before
+it. The Chinese visual-theme rework that was "carried forward" above is
+explicitly out of scope for this pass — continuing it was ruled out in favor
+of finishing the language flip and getting it live
+([`115d992`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-yanzzzzzzzz/commit/115d992)).
+
+**Scope boundary, held deliberately**: user-authored puzzle stories,
+nicknames, avatars, bios, and every historical transcript/chat entry already
+in the database are untouched — translating those would mean silently
+rewriting somebody's own words, which this instruction never asked for and
+this app has no business doing. Only two kinds of first-party content
+changed: puzzle *reference* content tracked in git (`src/data/puzzles.ts`,
+the same file `reconcileSeedPuzzles()` already treats as code, not user
+data — see the slug-reconciliation entry above) and auto-generated system
+strings with no author (`"Anonymous Detective#N"`, `"Unknown host"`,
+`"Anonymous author"`, the content-warning copy). Both were already proven
+safe to resync without touching real rooms: the Chinese-translation entry
+above built exactly this mechanism (`reconcileSeedPuzzles()`, keyed by a
+`slug` that never changes across a text edit) specifically so this reversal
+wouldn't need a new migration or a fresh data-loss risk — translating the
+seed content back to English is the same operation, run in the other
+direction, over a mechanism already regression-tested in
+`spec/migration.test.ts`.
+
+**Verification, not just a reasoned argument**: ran the full suite (35/35)
+and `pnpm typecheck` against an isolated local server on port 8081 with its
+own throwaway SQLite file (`.data-test-8081/`, gitignored, never the user's
+own port-8080 session), confirmed `pnpm build` produces a clean bundle, then
+fetched the live rendered homepage/readme/room-creation pages from that
+server directly and confirmed no Chinese character remained in any of them
+(a simple `\p{Script=Han}` regex over the fetched HTML, not just reading the
+diff).
+
+### Shipping it: a real production backup before touching the live database
+
+The brief's persistence requirement, and this task's explicit authorization,
+both call for backing up `/data` before a migration-touching deploy — this
+one reconciles `puzzles` in place via `reconcileSeedPuzzles()`, the same code
+path that already changed real rows once before (the Chinese translation
+itself). Woke the Fly machine first (`auto_stop_machines` had it asleep —
+one plain `fetch` to the live URL, not a special wake command), then ran a
+real **SQLite backup API** call over `flyctl ssh console` using `node:sqlite`'s
+own `backup()` function — not a raw copy of `app.db`, which would have missed
+whatever was still sitting in `app.db-wal` (WAL mode is on; the live file had
+a 4 MB WAL at backup time) and risked copying a file mid-write. The backup
+landed as `/data/app.db.backup-pre-english-deploy`, verified immediately by
+opening it read-only and checking real row counts (2 rooms, 8 puzzles, 768
+sessions, 8 qa_entries) before deploying anything — confirming the backup
+file itself was a complete, queryable snapshot, not an empty or truncated
+one. Left in place on the `/data` volume afterward (not deleted, not copied
+off into this repo or anywhere else) as the actual rollback artifact per the
+procedure already written up above, and specifically **not** pulled down to
+a local machine or uploaded elsewhere, since production user data leaving
+Fly's own volume was explicitly out of scope for this task.
+
+Deployed with `flyctl deploy --remote-only --ha=false -a
+comp4020-final-yanzzzzzzzz` (the same command `fly.toml`'s own comment
+documents for a private-repo manual deploy) via `mise exec -- flyctl`, using
+the course-provisioned token already sitting in the gitignored
+`mise.local.toml` — never read or printed in this session, only used as
+`flyctl`'s own ambient auth. The build and rolling machine update both
+reported healthy; Fly's post-deploy DNS check timed out once (a transient
+resolver blip against `8.8.8.8`, not an app or deploy failure) and the site
+was independently confirmed reachable seconds later anyway.
+
+**Verified against the live deploy, not just the build log**: fetched
+`https://comp4020-final-yanzzzzzzzz.fly.dev/`, `/readme/`, and `/rooms/new`
+directly — all three 200, all three free of Chinese characters. Then,
+separately, read the production database directly over `flyctl ssh console`
+(not inferred from the app behaving correctly) and confirmed every row
+survived: the same 2 rooms, 8 puzzles, 8 qa_entries, both rooms' `puzzle_id`
+foreign keys still resolving to a real row, and the 8 official puzzle titles
+now reading in English (`"A Bowl of Turtle Soup"`, etc.) in place — not a
+new row, not a duplicate, not an orphaned `puzzle_id` — matching exactly what
+`reconcileSeedPuzzles()`'s slug-keyed UPDATE is designed to do.
+`sessions` had grown from 768 (at backup time) to 774 by the time this was
+checked — real traffic between the backup and this check, not data loss.
+
+Not done in this pass: the GitHub Actions `checks`/`deploy` workflow didn't
+run for this push, since the repo is still private (`checks.yml`'s own `if:
+!github.event.repository.private` guard) — this session's `gh run list`
+calls were denied by this environment's permission policy before that could
+even be confirmed from the Actions UI, so the manual `flyctl deploy` path
+above was the one actually exercised and verified, consistent with
+`fly.toml`'s own documented behavior for a private repo.
