@@ -180,14 +180,6 @@ export function homePage(args: {
       </div>
     </section>
 
-    <section class="join-strip" aria-label="Join an existing case">
-      <form method="get" action="/join" class="join-form">
-        <label for="join-code">Have an invitation code?</label>
-        <input type="text" id="join-code" name="code" maxlength="5" autocomplete="off" placeholder="ABCDE" />
-        <button type="submit" class="join-button">Join</button>
-      </form>
-    </section>
-
     <section class="below-hero-info" aria-label="Before you play">
       <p class="content-warning" role="note">
         <span class="content-warning-icon" aria-hidden="true">⚠️</span>
@@ -196,6 +188,14 @@ export function homePage(args: {
       <p class="reasoning-total" id="reasoning-total" data-reasoning-seconds="${reasoningSeconds}">
         <strong>${formatReasoningTime(reasoningSeconds)}</strong> of shared reasoning across all rooms
       </p>
+    </section>
+
+    <section class="join-strip" aria-label="Join an existing case">
+      <form method="get" action="/join" class="join-form">
+        <label for="join-code">Have an invitation code?</label>
+        <input type="text" id="join-code" name="code" maxlength="5" autocomplete="off" placeholder="ABCDE" />
+        <button type="submit" class="join-button">Join</button>
+      </form>
     </section>
 
     <section class="featured-cases">

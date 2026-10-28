@@ -19,6 +19,11 @@
   --accent-bright: #e9bd5b;
   --border: rgba(236, 231, 217, 0.14);
   --gold-line: rgba(209, 161, 61, 0.34);
+  /* Shared horizontal inset for main's content AND the hero's text column,
+     so the hero's copy lines up with every section below it instead of
+     sitting at its own, narrower edge padding. Grows with viewport up to
+     100px on a wide desktop, not a flat 24px gutter everywhere. */
+  --gutter: clamp(1rem, 6vw, 6.25rem);
   font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
 }
 
@@ -51,7 +56,7 @@ h3 {
 main {
   max-width: 75rem;
   margin: 0 auto;
-  padding: 0 clamp(1rem, 4vw, 2rem) 3rem;
+  padding: 0 var(--gutter) 3rem;
 }
 
 /* Two groups, not a three-way space-between: the brand + nav sit together
@@ -301,7 +306,10 @@ textarea:focus-visible {
   width: 100vw;
   margin-left: calc(50% - 50vw);
   margin-right: calc(50% - 50vw);
-  min-height: clamp(30rem, 86vh, 46rem);
+  /* A restrained band, not a full-viewport screen: roughly 500-560px on a
+     typical desktop window, scaling gently with viewport height rather than
+     being pinned to it. */
+  min-height: clamp(28rem, 55vh, 35rem);
   display: flex;
   align-items: flex-end;
   overflow: hidden;
@@ -326,9 +334,12 @@ textarea:focus-visible {
    crushing the photo to invisible — the right side (where the bowl, lamp
    and magnifying glass sit) stays clearly visible, matching the source
    image's own composition (investigative objects concentrated right,
-   quiet dark left reserved for text). A second, lighter bottom gradient
-   keeps the join-form/warning readable without re-darkening the whole
-   frame. */
+   quiet dark left reserved for text). A second, bottom-edge gradient fades
+   the photo to the exact same flat color as the page body (--bg) right at
+   the hero's lower edge — not just a darkening wash — so the hero's last
+   visible pixel row and the next section's background are the same color
+   and the seam between "photo" and "page" disappears instead of reading as
+   a hard-edged cut. */
 .hero-overlay {
   position: absolute;
   inset: 0;
@@ -340,7 +351,7 @@ textarea:focus-visible {
       rgba(6, 8, 17, 0.32) 58%,
       rgba(6, 8, 17, 0.08) 82%
     ),
-    linear-gradient(0deg, rgba(6, 8, 17, 0.55) 0%, rgba(6, 8, 17, 0) 38%);
+    linear-gradient(0deg, var(--bg) 0%, rgba(11, 14, 26, 0) 22%);
 }
 
 /* Two soft, slow-drifting mist blobs over the photo's steam area — a subtle
@@ -390,14 +401,14 @@ textarea:focus-visible {
    base to read. */
 @media (max-width: 40rem) {
   .hero {
-    min-height: clamp(20rem, 62vh, 30rem);
+    min-height: clamp(18rem, 48vh, 24rem);
   }
   .hero-overlay {
     background: linear-gradient(
       0deg,
-      rgba(6, 8, 17, 0.92) 0%,
-      rgba(6, 8, 17, 0.6) 42%,
-      rgba(6, 8, 17, 0.12) 72%,
+      var(--bg) 0%,
+      rgba(6, 8, 17, 0.75) 28%,
+      rgba(6, 8, 17, 0.25) 62%,
       rgba(6, 8, 17, 0) 100%
     );
   }
@@ -425,7 +436,10 @@ textarea:focus-visible {
   position: relative;
   z-index: 2;
   max-width: 28rem;
-  padding: clamp(1.5rem, 5vw, 3.5rem) clamp(1rem, 4vw, 2rem) clamp(2rem, 6vw, 3.5rem);
+  /* Same horizontal gutter as main's own content, so the headline's left
+     edge lines up with "Featured cases" / "Open cases" etc. below it
+     instead of sitting flush against the viewport edge on desktop. */
+  padding: clamp(1.5rem, 5vw, 3rem) var(--gutter) clamp(1.5rem, 4vw, 2.5rem);
   color: var(--fg);
 }
 
@@ -473,58 +487,30 @@ textarea:focus-visible {
   gap: 1rem;
 }
 
-/* ---------- Join-by-code strip (its own band below the hero, not part of
-   the hero's own CTA group) ---------- */
-
+/* ---------- Transition band: warning, stat, join-by-code ----------
+   One continuous, borderless, body-colored passage between the hero photo
+   and "Featured cases" — not a colored toolbar or a bordered card. Both
+   <section> elements (.below-hero-info, .join-strip) keep their own DOM
+   nodes (existing tests/markup depend on that split), but visually they're
+   one unbroken stack: same background as <body>, same centered axis, no
+   border or fill distinguishing one from the other, small consistent gaps
+   instead of a section-sized gap plus a rule between them. */
+.below-hero-info,
 .join-strip {
-  padding: 1.1rem 0;
-  border-bottom: 1px solid var(--border);
-  background: var(--bg-raised);
-}
-
-.join-form {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.6rem;
-  align-items: center;
-  justify-content: center;
-}
-
-.join-form label {
-  font-size: 0.9rem;
-  color: var(--fg-dim);
-}
-
-.join-form input {
-  width: 7rem;
+  padding: 0.5rem 0;
   text-align: center;
-  text-transform: uppercase;
-  background: var(--bg-sunken);
-  border-color: var(--border);
-  color: var(--fg);
 }
-
-/* A deliberately lower-weight secondary action, not a third gold CTA. */
-.join-button {
-  background: transparent;
-  color: var(--fg);
-  border: 1px solid var(--border);
-}
-
-.join-button:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--fg) 8%, transparent);
-}
-
-/* ---------- Below-hero info: content warning + reasoning stat ---------- */
 
 .below-hero-info {
-  padding: 1.25rem 0;
-  border-bottom: 1px solid var(--border);
-  text-align: center;
+  padding-top: 1.75rem;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 0.75rem;
+  gap: 0.6rem;
+}
+
+.join-strip {
+  padding-bottom: 1.75rem;
 }
 
 /* Soft but legible red — enough contrast on the dark background to read as
@@ -549,12 +535,51 @@ textarea:focus-visible {
 
 .reasoning-total {
   margin: 0;
-  font-size: 0.95rem;
+  font-size: 0.85rem;
   color: var(--fg-dim);
 }
 
 .reasoning-total strong {
   color: var(--accent-bright);
+}
+
+.join-form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+  justify-content: center;
+}
+
+.join-form label {
+  font-size: 0.85rem;
+  color: var(--fg-dim);
+}
+
+.join-form input {
+  width: 6.5rem;
+  min-height: 2.5rem;
+  padding: 0.4rem 0.6rem;
+  text-align: center;
+  text-transform: uppercase;
+  background: var(--bg-raised);
+  border-color: var(--border);
+  color: var(--fg);
+}
+
+/* A deliberately lower-weight secondary action, not a third gold CTA and
+   not the same visual rank as the hero's own two buttons. */
+.join-button {
+  background: transparent;
+  color: var(--fg-dim);
+  border: 1px solid var(--border);
+  min-height: 2.5rem;
+  padding: 0.4rem 1rem;
+}
+
+.join-button:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--fg) 8%, transparent);
+  color: var(--fg);
 }
 
 /* ---------- How it plays ---------- */
@@ -614,7 +639,11 @@ textarea:focus-visible {
 /* ---------- Featured cases / case library cards ---------- */
 
 .featured-cases {
-  padding: 2rem 0;
+  /* Less top padding than this page's other section bands: it follows
+     directly after .join-strip, which already carries its own bottom
+     breathing room, so stacking both in full would read as one oversized
+     gap rather than one continuous page. */
+  padding: 0.75rem 0 2rem;
   border-bottom: 1px solid var(--border);
 }
 
