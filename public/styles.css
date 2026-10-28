@@ -381,6 +381,34 @@ textarea:focus-visible {
   }
 }
 
+/* On a narrow viewport the copy block spans the full width (there's no
+   "right side" of the hero left clear for the desk/bowl composition the way
+   there is on desktop), so a left-right gradient would darken almost the
+   whole frame. Switching to a bottom-anchored vignette here keeps the top
+   two-thirds of the photo genuinely visible instead of hidden under a wash
+   of near-black, while the text at the bottom still sits on a dark enough
+   base to read. */
+@media (max-width: 40rem) {
+  .hero {
+    min-height: clamp(20rem, 62vh, 30rem);
+  }
+  .hero-overlay {
+    background: linear-gradient(
+      0deg,
+      rgba(6, 8, 17, 0.92) 0%,
+      rgba(6, 8, 17, 0.6) 42%,
+      rgba(6, 8, 17, 0.12) 72%,
+      rgba(6, 8, 17, 0) 100%
+    );
+  }
+  .hero-copy {
+    max-width: none;
+  }
+  .hero-copy h1 {
+    max-width: none;
+  }
+}
+
 @keyframes mist-drift {
   0%,
   100% {
@@ -396,7 +424,7 @@ textarea:focus-visible {
 .hero-copy {
   position: relative;
   z-index: 2;
-  max-width: 36rem;
+  max-width: 28rem;
   padding: clamp(1.5rem, 5vw, 3.5rem) clamp(1rem, 4vw, 2rem) clamp(2rem, 6vw, 3.5rem);
   color: var(--fg);
 }
@@ -419,21 +447,23 @@ textarea:focus-visible {
 }
 
 .hero-copy h1 {
-  margin: 0 0 0.4rem;
-  font-size: clamp(1.75rem, 4vw, 2.5rem);
+  margin: 0 0 0.5rem;
+  font-size: clamp(1.5rem, 3.2vw, 2.1rem);
+  line-height: 1.15;
+  max-width: 20ch;
 }
 
 .hero-tagline {
-  margin: 0 0 0.9rem;
+  margin: 0 0 1rem;
   font-size: 1.05rem;
   font-weight: 600;
   color: var(--accent-bright);
 }
 
 .hero-blurb {
-  margin: 0 0 1.25rem;
+  margin: 0 0 1.5rem;
   color: var(--fg-dim);
-  max-width: 34rem;
+  max-width: 28rem;
 }
 
 .hero-actions {
@@ -441,15 +471,23 @@ textarea:focus-visible {
   flex-wrap: wrap;
   align-items: center;
   gap: 1rem;
-  margin-bottom: 1rem;
+}
+
+/* ---------- Join-by-code strip (its own band below the hero, not part of
+   the hero's own CTA group) ---------- */
+
+.join-strip {
+  padding: 1.1rem 0;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-raised);
 }
 
 .join-form {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.5rem;
+  gap: 0.6rem;
   align-items: center;
-  margin-bottom: 1rem;
+  justify-content: center;
 }
 
 .join-form label {
@@ -461,28 +499,52 @@ textarea:focus-visible {
   width: 7rem;
   text-align: center;
   text-transform: uppercase;
-  background: rgba(11, 14, 26, 0.55);
+  background: var(--bg-sunken);
   border-color: var(--border);
   color: var(--fg);
 }
 
-.content-warning {
-  margin: 0;
-  padding: 0.5rem 0.9rem;
-  border-radius: 0.4rem;
-  border: 1px solid color-mix(in srgb, orange 45%, transparent);
-  background: rgba(6, 8, 17, 0.55);
-  color: var(--fg-dim);
-  font-size: 0.85rem;
-  max-width: fit-content;
+/* A deliberately lower-weight secondary action, not a third gold CTA. */
+.join-button {
+  background: transparent;
+  color: var(--fg);
+  border: 1px solid var(--border);
 }
 
-/* ---------- Stats strip ---------- */
+.join-button:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--fg) 8%, transparent);
+}
 
-.stats-strip {
-  padding: 1rem 0;
+/* ---------- Below-hero info: content warning + reasoning stat ---------- */
+
+.below-hero-info {
+  padding: 1.25rem 0;
   border-bottom: 1px solid var(--border);
   text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+/* Soft but legible red — enough contrast on the dark background to read as
+   a warning, deliberately with no gold border or red fill behind it (the
+   user asked for text emphasis only, not another decorated chip) and no
+   animation. */
+.content-warning {
+  margin: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+  max-width: 34rem;
+  color: #e8a3a3;
+  font-size: 0.85rem;
+}
+
+.content-warning-icon {
+  flex-shrink: 0;
 }
 
 .reasoning-total {

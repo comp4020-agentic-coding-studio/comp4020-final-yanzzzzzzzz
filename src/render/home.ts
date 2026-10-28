@@ -103,7 +103,7 @@ function faqHtml(): string {
 }
 
 function formatReasoningTime(totalSeconds: number): string {
-  if (totalSeconds < 60) return `${totalSeconds} second${totalSeconds === 1 ? "" : "s"}`;
+  if (totalSeconds < 60) return "Less than a minute";
   const hours = Math.floor(totalSeconds / 3600);
   const minutes = Math.floor((totalSeconds % 3600) / 60);
   if (hours === 0) return `${minutes} minute${minutes === 1 ? "" : "s"}`;
@@ -172,29 +172,29 @@ export function homePage(args: {
       <div class="hero-copy">
         <h1>Every strange ending hides a story.</h1>
         <p class="hero-tagline">Ask together. Uncover the truth.</p>
-        <p class="hero-blurb">
-          Start from one odd, unexplained scene and ask yes / no / irrelevant
-          questions until the room rebuilds the whole truth behind it. Play
-          alone, or open a case and let friends join with just a code.
-        </p>
+        <p class="hero-blurb">Unravel strange stories with friends, one question at a time.</p>
         <div class="hero-actions">
           <a href="/rooms/new" class="button-link hero-cta-primary">Create a room</a>
           <a href="/cases" class="button-link-outline hero-cta-secondary">Explore cases</a>
         </div>
-        <form method="get" action="/join" class="join-form">
-          <label for="join-code">Have a code?</label>
-          <input type="text" id="join-code" name="code" maxlength="5" autocomplete="off" placeholder="ABCDE" />
-          <button type="submit">Join</button>
-        </form>
-        <p class="content-warning" role="note">
-          ⚠️ Some stories contain horror or graphic content. Proceed with caution.
-        </p>
       </div>
     </section>
 
-    <section class="stats-strip" aria-label="Site activity">
+    <section class="join-strip" aria-label="Join an existing case">
+      <form method="get" action="/join" class="join-form">
+        <label for="join-code">Have an invitation code?</label>
+        <input type="text" id="join-code" name="code" maxlength="5" autocomplete="off" placeholder="ABCDE" />
+        <button type="submit" class="join-button">Join</button>
+      </form>
+    </section>
+
+    <section class="below-hero-info" aria-label="Before you play">
+      <p class="content-warning" role="note">
+        <span class="content-warning-icon" aria-hidden="true">⚠️</span>
+        Some stories contain horror or graphic content. Proceed with caution.
+      </p>
       <p class="reasoning-total" id="reasoning-total" data-reasoning-seconds="${reasoningSeconds}">
-        <strong>${formatReasoningTime(reasoningSeconds)}</strong> of real reasoning time logged across every room, together
+        <strong>${formatReasoningTime(reasoningSeconds)}</strong> of shared reasoning across all rooms
       </p>
     </section>
 
