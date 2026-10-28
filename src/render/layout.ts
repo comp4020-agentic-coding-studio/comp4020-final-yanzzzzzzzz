@@ -1,5 +1,6 @@
 import type { Profile } from "../db.ts";
 import { escapeHtml } from "./html.ts";
+import { asset } from "./asset.ts";
 
 function identityLink(profile?: Profile): string {
   if (!profile?.nickname) {
@@ -38,7 +39,7 @@ export function layout(title: string, body: string, profile?: Profile, activePat
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>${title}</title>
-  <link rel="stylesheet" href="/styles.css" />
+  <link rel="stylesheet" href="${asset("/styles.css")}" />
 </head>
 <body>
   <header class="site-header">
@@ -65,7 +66,7 @@ ${body}
   </footer>
   <p id="music-status" class="music-status" role="status" aria-live="polite"></p>
   <audio id="bg-music" src="/audio/creepy-ambient.ogg" loop preload="none"></audio>
-  <script src="/music.js"></script>
+  <script src="${asset("/music.js")}"></script>
 </body>
 </html>`;
 }

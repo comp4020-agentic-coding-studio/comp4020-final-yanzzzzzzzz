@@ -6,7 +6,10 @@ const baseUrl = inject("baseUrl");
 it("ships a self-hosted OGG audio element and script, with no network preload until the user opts in", async () => {
   const html = await (await fetch(new URL("/", baseUrl))).text();
   expect(html).toMatch(/<audio id="bg-music" src="\/audio\/creepy-ambient\.ogg" loop preload="none">/);
-  expect(html).toContain('<script src="/music.js">');
+  // Cache-busted with a release query string (src/render/asset.ts) so a
+  // redeploy's new bytes aren't served from a browser's stale cached copy
+  // of the old /music.js at the same URL.
+  expect(html).toMatch(/<script src="\/music\.js\?v=[^"]+"><\/script>/);
 
   const audioRes = await fetch(new URL("/audio/creepy-ambient.ogg", baseUrl));
   expect(audioRes.status).toBe(200);

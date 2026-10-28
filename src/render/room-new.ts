@@ -1,6 +1,7 @@
 import type { Profile } from "../db.ts";
 import { layout } from "./layout.ts";
 import { escapeHtml } from "./html.ts";
+import { asset } from "./asset.ts";
 
 export interface PuzzleOption {
   id: string;
@@ -86,7 +87,7 @@ export function newRoomPage(args: {
       ${tabsHtml(mode)}
       ${mode === "existing" ? existingFormHtml(puzzles, selectedPuzzleId) : authorFormHtml()}
     </section>
-    <script src="/create-case.js"></script>
+    <script src="${asset("/create-case.js")}"></script>
     `,
     profile,
   );

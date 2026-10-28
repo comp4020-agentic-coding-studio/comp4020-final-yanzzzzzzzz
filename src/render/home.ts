@@ -1,6 +1,7 @@
 import type { LobbyRoom, Profile } from "../db.ts";
 import { layout } from "./layout.ts";
 import { escapeHtml } from "./html.ts";
+import { asset } from "./asset.ts";
 
 export interface LobbyCardRoom extends LobbyRoom {
   players: number;
@@ -204,7 +205,7 @@ export function homePage(args: {
     </section>
 
     ${faqHtml()}
-    <script src="/lobby.js"></script>
+    <script src="${asset("/lobby.js")}"></script>
     `,
     profile,
     "home",

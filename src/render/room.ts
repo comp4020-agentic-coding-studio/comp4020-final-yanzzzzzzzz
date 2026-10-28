@@ -2,6 +2,7 @@ import type { Profile, Puzzle, QaEntry, Room } from "../db.ts";
 import type { Member } from "../sse.ts";
 import { layout } from "./layout.ts";
 import { escapeHtml } from "./html.ts";
+import { asset } from "./asset.ts";
 
 const VERDICT_LABEL: Record<string, string> = {
   yes: "Yes",
@@ -175,7 +176,7 @@ export function roomPage(args: {
       </aside>
     </section>
     <script id="initial-transcript" type="application/json">${JSON.stringify(transcript)}</script>
-    <script src="/client.js"></script>
+    <script src="${asset("/client.js")}"></script>
     `,
     profile,
   );
