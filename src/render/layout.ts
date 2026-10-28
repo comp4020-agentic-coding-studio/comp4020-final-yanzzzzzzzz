@@ -22,7 +22,7 @@ export function layout(title: string, body: string, profile?: Profile): string {
   <header class="site-header">
     <a class="brand" href="/">Turtle Soup Puzzle Room</a>
     <nav class="site-nav">
-      <a href="/readme/">About</a>
+      <a href="/about">About</a>
       ${identityLink(profile)}
     </nav>
   </header>

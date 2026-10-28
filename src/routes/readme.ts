@@ -12,7 +12,7 @@ readmeRoute.get("/readme/", (c) => {
   const profile = getProfile(getOrCreateSessionId(c));
   return c.html(
     layout(
-      "About · Turtle Soup Puzzle Room",
+      "Technical documentation · Turtle Soup Puzzle Room",
       `<article class="readme">\n${renderMarkdown(md)}\n</article>`,
       profile,
     ),

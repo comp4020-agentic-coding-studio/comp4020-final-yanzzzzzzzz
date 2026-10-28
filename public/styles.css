@@ -718,6 +718,78 @@ textarea:focus-visible {
   margin-top: 1.5rem;
 }
 
+.case-browse-blurb {
+  opacity: 0.8;
+  margin: 0.25rem 0 1rem;
+}
+
+.case-search {
+  display: flex;
+  align-items: flex-end;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  margin-bottom: 1.5rem;
+}
+
+.case-search label {
+  display: block;
+  font-size: 0.85rem;
+  margin-bottom: 0.25rem;
+}
+
+.case-browse-empty {
+  opacity: 0.8;
+}
+
+.case-browse-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1rem;
+}
+
+@media (min-width: 40rem) {
+  .case-browse-list {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+.case-browse-card {
+  padding: 1rem;
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.case-browse-card h3 {
+  margin: 0;
+}
+
+.case-browse-author {
+  margin: 0;
+  font-size: 0.85rem;
+  opacity: 0.75;
+}
+
+.case-browse-premise {
+  margin: 0;
+  flex: 1;
+}
+
+.about h2 {
+  margin-top: 2rem;
+}
+
+.about-footnote {
+  margin-top: 2rem;
+  opacity: 0.75;
+  font-size: 0.9rem;
+}
+
 .readme h1,
 .readme h2,
 .readme h3 {
