@@ -1143,3 +1143,280 @@ Verified live, not just from the build/deploy log: fetched
 own rendered HTML and confirmed the nav's `About` link resolves to `/about`
 and `Browse every case` resolves to `/cases` (not `/rooms/new`) on the
 actual deployed site, not just in the local test server.
+
+## A real nav/community/music pass, scoped to local-only this session
+
+This session's explicit authorization was narrower than every prior one in
+this file: local changes, local tests, and commits only — no `git push`, no
+`flyctl deploy`, no production database access, no reading `mise.local.toml`.
+That boundary overrides this repo's own CLAUDE.md "push every commit
+immediately" rule for the duration of this session; every commit below sits
+on `main` locally, unpushed, by explicit instruction. Five commits, each
+independently green (`pnpm check` + `pnpm build` run against its own
+isolated checkout before the next commit started), not one combined diff.
+
+### Nav rework and an opt-in, honestly-stated music toggle
+[`6097931`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-yanzzzzzzzz/commit/6097931),
+fixed by
+[`60ed5d0`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-yanzzzzzzzz/commit/60ed5d0).
+
+Modeled on tanghenre.com's structure (an icon+wordmark brand linking home,
+a small top nav, no login button) without copying any of its art or copy:
+an original inline-SVG bowl-with-steam icon (hand-drawn `<path>`s colored
+from the site's own `--accent`/`--fg` variables, not traced or downloaded)
+replaces the old text-only "Turtle Soup Puzzle Room" wordmark and links back
+to `/`. The single old `About` nav link became a real three-item nav (Home /
+Case Library / Community), each marked `aria-current="page"` and an
+`.active` style when it's the current page — `layout()` now takes an
+optional `activePath` parameter every page-render function threads through.
+No Login control exists, consistent with this app never having had
+accounts; the existing nickname/profile link stays in the header (now inside
+a `.site-controls` group) specifically because the brief's multi-user
+requirement needs players to stay identifiable to each other, which a
+Login-free session already provides. `/about` moved to a new site footer,
+next to the existing `/readme/` link it was already logically paired with
+on `/about`'s own page.
+
+**Music**: the user supplied the verified source in-prompt — "Creepy Ambient
+Loop" by epb9000, CC0 1.0, direct file
+`https://opengameart.org/sites/default/files/creepyloop-v2_0.ogg` — with
+explicit authorization to download and self-host it. Fetched that one URL
+directly with Node's own `fetch` (no `curl`/`wget`, avoiding this session's
+shell-prefix permission friction), checked the HTTP status and the file's
+own "OggS" magic-byte signature (not trusted on `Content-Type` alone, since
+a redirect-to-HTML-error-page would still claim success otherwise) before
+writing it to `public/audio/creepy-ambient.ogg`. `ASSET_LICENSES.md` records
+author/source/direct-file/license/date; `/about` gained a "Music credits"
+section linking it.
+
+The toggle (`public/music.js`) defaults off and only ever reports "on"
+after a real, resolved `audio.play()` — a rejected promise (an autoplay
+restriction, an unsupported format) leaves the button at "off" with a
+readable status message instead of silently pretending playback started.
+A `canPlayType('audio/ogg; codecs="vorbis"')` check disables the whole
+control with an explanation if the browser can't play OGG at all; no
+`ffmpeg`/encoder was available in this sandboxed environment to produce a
+second-format fallback file, so graceful degradation (disabled + explained)
+is what ships instead of a silently broken button. The preference persists
+in `localStorage`, failing safe to "off" if storage throws rather than
+crashing the page; a hidden-tab pause only resumes on return if the user
+had explicitly opted in AND the browser still permits it, never forcing
+playback. `preload="none"` keeps the file off the critical path until
+opt-in. Independent of `src/sse.ts` and the existing
+`prefers-reduced-motion` guard on the homepage's steam animation — neither
+was touched.
+
+**Found and fixed while wiring this up, not part of the original ask**:
+Hono's built-in MIME map has no `.ogg` entry (only the rarer `.oga`), so
+`serveStatic` would have sent the file as `application/octet-stream`.
+Harmless to a `<audio>` tag (its own `canPlayType` check doesn't consult the
+HTTP header) but wrong for anything else fetching the file directly —
+`src/server.ts` now corrects the header for that one path after
+`serveStatic` runs.
+
+Verified: `spec/nav.test.ts` and `spec/music.test.ts` (11 tests) drive the
+real rendered layout and the real, unmodified `public/music.js` through
+jsdom — default-off state, a resolved `play()` flipping the button to an
+accurate "on", a rejected `play()` never claiming "on", the
+disabled-when-unsupported path, and fail-safe behavior when `localStorage`
+throws — plus a direct fetch of the served audio file confirming its
+"OggS" signature and a >100KB size (not a truncated or HTML-error
+download). `60ed5d0` is a same-session self-correction: the first commit's
+own `spec/nav.test.ts` asserted against `/community`, a route that didn't
+exist until a later commit — caught by re-running `pnpm check` against a
+clean checkout of just that one commit (not the cumulative working tree),
+the same discipline `1b25e42`'s red-CI entry earlier in this file already
+established as the lesson. Full suite 53/53 at that commit in isolation.
+
+### Community story reviews: real per-session reviews, no forum, no spoilers by default
+[`9928d0e`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-yanzzzzzzzz/commit/9928d0e).
+
+New `story_reviews` table, added the same additive way every migration in
+this file has been since the `7965107` data-loss fix: `CREATE TABLE IF NOT
+EXISTS` plus one supporting index, no `ALTER` on any existing table, no
+reseed. `UNIQUE(puzzle_id, session_id)` is the entire mechanism behind "one
+review per session per story, author can edit, nobody else can" —
+`upsertReview()` is a single `INSERT ... ON CONFLICT DO UPDATE` keyed by
+that constraint, so a session re-reviewing a story it's already reviewed
+updates its own row rather than ever creating a second one, and no route
+exists that lets a session touch another session's row. No delete endpoint
+at all, by deliberate scope cut — a delete surface raises moderation
+questions (can an author's own story's negative review be deleted by
+someone else? by the author? by nobody?) this project doesn't need to
+answer for a review feature.
+
+`GET /community` lists a public puzzle's reviews (nickname/avatar, title
+link, formatted English date via `toLocaleDateString`, optional 1–5 star
+rating, plain-text body) with a genuine empty state — never fabricated
+placeholder reviews. `POST /community` validates server-side (body length
+1–2000, rating 1–5 or none, the puzzle must be `shared = 1` **at write
+time**, re-checked independently of whatever the `<select>` showed at page
+load) with the same PRG `?notice=`/`?saved=1` redirect pattern
+`src/routes/rooms.ts` already uses, plus a 5-second per-session posting
+cooldown and a same-origin check. The same-origin check was lifted out of
+`rooms.ts`'s heartbeat endpoint into a new `src/same-origin.ts` so both
+routes share one implementation instead of two copies that could silently
+drift apart — `rooms.ts` now imports it instead of defining its own copy.
+
+A private (unshared) puzzle never appears in the story picker, the review
+list, or search — `listReviews()`'s query joins against `puzzles` with
+`shared = 1` inline, so a since-privatized puzzle's reviews can't leak even
+if the row itself still exists. Posting against a private or nonexistent
+puzzle id gets the identical generic "not open for reviews" rejection
+either way, the same non-selective-rejection pattern `GET
+/rooms/new?puzzleId=` already established, so a guessed id can't be used to
+probe whether it's "private" vs. "doesn't exist." A spoiler-flagged review
+renders inside a collapsed `<details>/<summary>` fold rather than being
+hidden behind client-side JS, so it degrades to "visible but requires an
+explicit click" with no script at all. Review bodies are plain text, always
+run through the existing `escapeHtml()` — confirmed with a literal
+`<script>` payload posted and checked to come back escaped on the rendered
+page, not just reasoned about.
+
+Reviews are deliberately **not** a room transcript viewer or a general
+forum: nothing in `src/render/community.ts` or `src/routes/community.ts`
+touches `src/sse.ts`, references a `room_id`, or reads `qa_entries` — a
+dedicated test posts a question in a real active room and confirms it never
+reaches the community page, specifically to catch the two features being
+accidentally conflated.
+
+**Migration safety, verified three ways, not just asserted**: (1) the new
+`CREATE TABLE IF NOT EXISTS` is a no-op against a database that already has
+it — confirmed by restarting the local dev server against the same
+data directory and finding every room and every review posted in the prior
+run still present; (2) built a throwaway fixture carrying the *exact*
+pre-this-session schema (no `story_reviews` table at all, real
+rooms/sessions/puzzles data already in it) and booted the current,
+unmodified `src/db.ts` against it directly — the table gets created, every
+pre-existing row survives untouched, and a review can be written and read
+back immediately afterward; (3) no existing table's `DDL` changed at all in
+this migration, so there's no dangling-foreign-key risk of the kind the
+`rooms_old` incident (documented earlier in this file) caused — the new
+table only ever references existing tables, nothing references it yet.
+
+Verified: 23 tests (later growing to 24, see below) in
+`spec/community.test.ts` covering the empty state, PRG success feedback
+with escaped author/date/rating, XSS escaping, same-session edit-in-place
+(confirmed as an `UPDATE`, not a second row), cross-session identity
+isolation (each session sees only its own "Your review" badge), rejected
+empty/too-long/bad-rating submissions with the typed body preserved for
+retry, the posting cooldown, cross-origin rejection, private-puzzle
+exclusion from every surface (list, search, form options, and POST
+rejection), spoiler folding, the `?puzzleId=` filter-and-preselect, the new
+`/cases` → `/community` review link, and non-mixing with room transcripts.
+Full suite 67/67 across 14 files at this commit, `pnpm typecheck` and `pnpm
+build` clean, against an isolated local server (port 8082, its own
+throwaway `DATA_DIR`, `ALLOW_MOCK_JUDGE=1`) — the user's own running
+preview processes on other ports were never stopped or touched, per this
+session's explicit instruction to leave them alone.
+
+### Two follow-up UI fixes from direct user feedback on the rendered layout
+
+After the above landed, the user gave two specific, concrete corrections
+against the actual rendered output — not new features, fixes to how the
+nav and FAQ actually looked once built. Each shipped as its own commit,
+per this session's "independent logical change → independent commit" rule.
+
+**Nav layout: grouped left, not centered**
+([`063d479`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-yanzzzzzzzz/commit/063d479)).
+The first nav commit's `.site-header` used `justify-content: space-between`
+across all three flex children (brand, nav, `.site-controls`) — which
+spreads three items evenly across the header's width, landing
+Home/Case&nbsp;Library/Community visually in the middle rather than reading
+as attached to the brand on the left. This was a real layout bug, not a
+matter of taste: `space-between` on *N* children always distributes them
+evenly regardless of how wide any one of them is, so no amount of content
+tweaking elsewhere would have fixed it without changing the positioning
+strategy itself.
+
+Fixed by wrapping the brand and nav in a new `.site-header-left` flex group
+(so they move, and wrap on narrow screens, as a single unit) and giving
+`.site-controls` its own `margin-left: auto` instead of leaning on the
+parent's `justify-content`. `.site-header` itself no longer sets
+`justify-content: space-between` at all — with one child's own
+`margin-left: auto` doing the "push everything after me to the far edge"
+job, there's nothing left for a three-way `space-between` to do, and
+removing it is what guarantees the nav can never drift back toward center
+regardless of how wide the controls group gets (a longer nickname, a wider
+music-button label). On a narrow viewport the left group wraps as its own
+unit before it affects `.site-controls`'s position, so the three nav links
+stay anchored under the brand instead of drifting toward center or
+colliding with the music button's touch target.
+
+Verified: 2 new tests (`spec/nav-layout.test.ts`) check both the DOM
+structure (`.site-header-left` wraps exactly the brand and nav; `
+.site-controls` is a later sibling, not nested inside the same group) and
+the compiled stylesheet itself (`.site-controls` carries `margin-left:
+auto`; `.site-header`'s own rule no longer contains `justify-content:
+space-between`) — testing the actual mechanism of the fix, not just that
+some visual outcome looks plausible from HTML alone. Full suite 69/69 at
+this commit. **Not independently verified in a real browser at 360px in
+this session** (no GUI browser available, consistent with every prior
+"theme pass" entry in this file) — a real visual check at that width is
+still the user's/Codex's to do against the next live preview.
+
+**FAQ: independently-collapsible `<details>`, not one big reveal**
+([`0a42121`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-yanzzzzzzzz/commit/0a42121)).
+User feedback, explicitly modeled on tanghenre.com's FAQ pattern: the old
+`<dl>` showed every question and its full answer at once, with no way to
+scan just the questions. Reworked each item into its own `<details>`
+element — not a single button gating the whole section, which the user
+explicitly ruled out — so every question collapses independently, defaults
+to closed, and any number can be open simultaneously. All five existing
+Q&A pairs are unchanged verbatim; only the wrapping markup
+(`dl`/`dt`/`dd` → `details`/`summary`/`p`) and its CSS changed.
+
+`<details>`/`<summary>` was picked specifically because it's native browser
+behavior: a `<summary>` is in the tab order with no `tabindex` needed, and
+Enter/Space toggles it with zero JavaScript — consistent with this app's
+standing "works fully with JS off" design (documented in `README.md`'s
+Stack section) rather than introducing a new JS-dependent accordion widget.
+The plus/minus indicator is a CSS-only `::before` glyph keyed off the
+browser's own `[open]` attribute (`.faq-item[open] summary::before`), not
+JS-tracked state — a single "+" rotated 45° into a "×" when open, using a
+`transform` rather than swapping the glyph's text content specifically so
+the homepage's existing `prefers-reduced-motion` media query (already
+guarding the steam animation) has something real to gate: a transform can
+be meaningfully transitioned or not; a content swap can't be "reduced" in
+any sense that matters. The default `::-webkit-details-marker` triangle is
+hidden so the custom glyph doesn't double up with a native one in
+WebKit-based browsers.
+
+Verified: 3 new tests (`spec/faq.test.ts`) — every item renders collapsed
+(no `open` attribute) with all five original question/answer pairs intact
+verbatim; a `jsdom`-driven click on each `<summary>` toggles that specific
+item's native `.open` property independently, confirming opening one never
+force-closes another and multiple can be open at once — this drives
+`<details>`'s actual native toggle behavior through jsdom, not a
+reimplementation of accordion logic in test code; and the compiled
+stylesheet carries a `:focus-visible` outline on `.faq-item summary`. Full
+suite 72/72 across 16 files at this commit, `pnpm typecheck` and `pnpm
+build` clean. **Not independently verified in a real browser** — the
+click/keyboard semantics of `<details>` are standardized and implemented
+identically across evergreen browsers, but an actual visual/interaction
+check (does it look right, does Enter/Space actually work with a keyboard
+in a real window) is still the user's/Codex's to do against the next live
+preview, same caveat as every prior visual-only pass in this file.
+
+### What's still open from this session
+
+- **No real-browser visual/interaction verification** of any of the five
+  commits above — this environment has no GUI browser, the same standing
+  limitation recorded in the theme-pass entries earlier in this file. The
+  user's own preview (Codex, on port 8083 against its own local database)
+  is the mechanism for that check; it was deliberately left running and
+  untouched throughout this session, and nothing here claims a visual pass
+  that didn't happen.
+- **No encoded fallback audio format.** `ffmpeg`/`sox`/`opusenc` are not
+  installed in this sandboxed environment, so a browser that can't decode
+  the shipped CC0 OGG file gets a disabled, explained toggle rather than a
+  second-format file. The CC0 source file was only ever available as OGG
+  from its official OpenGameArt download link; re-encoding it would need a
+  tool this session couldn't install or verify for correctness, so
+  graceful degradation (disabled + explained, never a silently broken
+  button) was the honest choice over shipping an unverified converted file.
+- Nothing in this session was pushed to `origin/main`, deployed, or
+  touched in production — every commit above sits on the local `main`
+  branch only, per this session's explicit, narrower-than-usual
+  authorization. The next session (or the user directly) still needs to
+  decide when to push and redeploy.
