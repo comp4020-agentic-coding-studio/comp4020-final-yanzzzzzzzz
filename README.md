@@ -53,7 +53,7 @@ participation, not intelligence or verified concentration.
 The automated suite protects session ownership, live updates, reconnect
 behaviour, persistence migrations, upload validation, judge failure handling,
 and the separation between questions and final guesses. The latest local
-verification passed 194 tests. Checks also require this README to be
+verification passed 205 tests. Checks also require this README to be
 published at `/readme/`.
 
 Human judgement is still needed for atmosphere, comfortable reading and

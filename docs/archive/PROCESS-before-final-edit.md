@@ -1,17 +1,17 @@
-> Historical process log preserved before the 29 October 2026 final-document revision. Claims describe their original stage and may be superseded; use the root PROCESS.md for the current overview.
+> Historical process log preserved before the 29 October 2026 final-document revision. Commit identifiers were updated to their corresponding reachable revisions after the authorized history rewrite; the narrative is otherwise preserved. Claims describe their original stage and may be superseded; use the root PROCESS.md for the current overview.
 
 # Process overview
 
 ## The brief, and what it fixed before any code
 
 Before writing any app code, I wrote the harness I'd hold myself to:
-[`dca01b8`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-yanzzzzzzzz/commit/dca01b8)
+[`7a400d1`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-yanzzzzzzzz/commit/7a400d1)
 set the standing rules — commit and push every change immediately with a
 reason, never weaken `spec/invariants.test.ts`, root-cause failures instead
 of retrying blind, record reasoning for real choices. Then I transcribed the
 brief's three fixed technical requirements (multi-user, real-time, persists)
 into the same file in
-[`c4b317b`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-yanzzzzzzzz/commit/c4b317b),
+[`8ccce89`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-yanzzzzzzzz/commit/8ccce89),
 including the one implication I didn't want to lose later: on Fly's
 auto-stop/auto-start machine, a dropped long-lived connection isn't a bug —
 one that never recovers is.
@@ -53,7 +53,7 @@ The full architecture — stack, data model, routes, the judge's prompt and
 failure handling, the Dockerfile, and an explicit MVP-vs-cut scope list — was
 written up and approved before any code, so the build itself was mostly
 execution against that plan, in
-[`5f5e97b`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-yanzzzzzzzz/commit/5f5e97b).
+[`331a3f0`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-yanzzzzzzzz/commit/331a3f0).
 A few choices worth recording because they weren't obvious going in:
 
 - **`node:sqlite` over `better-sqlite3`.** Node 24 ships a built-in SQLite
@@ -148,8 +148,8 @@ homepage at once each ended up alone unless one manually sent the other a
 link. Fixed by turning the homepage into a lobby — every open case is
 listed as a join link, and a new one appears live on everyone else's
 homepage the moment it's created
-([`1b25e42`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-yanzzzzzzzz/commit/1b25e42),
-[`05e3929`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-yanzzzzzzzz/commit/05e3929)).
+([`4d24726`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-yanzzzzzzzz/commit/4d24726),
+[`9366286`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-yanzzzzzzzz/commit/9366286)).
 
 The real decision was reuse vs. a second mechanism: `src/sse.ts`'s pub/sub
 was already generic enough to key by any channel name, not just a room id,
@@ -161,10 +161,10 @@ stale-but-harmless join link for a few minutes) that doesn't block anyone.
 
 ## One red commit in that sequence
 
-`1b25e42` (the lobby's backend commit) shows red in CI history:
+`4d24726` (the lobby's backend commit) shows red in CI history:
 `server.ts` was changed there to call `homePage({ rooms: listActiveRooms() })`,
 but `homePage()`'s signature only grew that parameter in the very next
-commit (`05e3929`), so that one commit, checked out on its own, doesn't
+commit (`9366286`), so that one commit, checked out on its own, doesn't
 typecheck. Root cause was splitting the backend/frontend commits without
 running `pnpm typecheck` against each commit individually, only against the
 cumulative working tree at the end. Caught from CI, not before pushing.
@@ -179,7 +179,7 @@ Another piece of feedback: the room should show how many people are
 actually in it. `src/sse.ts` already keeps a `Set<Client>` per channel for
 delivering the transcript — its size *is* the online count, so
 `connectionCount()` is a one-line read, not new state
-([`2535743`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-yanzzzzzzzz/commit/2535743)).
+([`563e423`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-yanzzzzzzzz/commit/563e423)).
 The one real decision was picking "currently connected" over "has ever
 joined" (the number `room_participants` already gives, used for
 nicknames) — "online" should mean online. Broadcasting it over a named
@@ -204,7 +204,7 @@ networking context immediately; clicking a link away just stops the page
 from reading the stream; the browser isn't obligated to abort that
 in-flight request right away; and only when it eventually does does the
 server even get a chance to notice. Fix
-([`a924da3`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-yanzzzzzzzz/commit/a924da3))
+([`1389e38`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-yanzzzzzzzz/commit/1389e38))
 was on the client: close the `EventSource` explicitly on the `pagehide`
 event (fires on any kind of navigating-away, including a plain link
 click), so the server is told the moment the user leaves instead of
@@ -215,7 +215,7 @@ whenever the browser gets around to tearing the connection down.
 Crit-9's brief asks for one documented decision about multi-user behavior,
 suggesting (among others) "whether people can see who else is here, and
 how." The room already had an online *count* (`connectionCount()`,
-[`2535743`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-yanzzzzzzzz/commit/2535743))
+[`563e423`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-yanzzzzzzzz/commit/563e423))
 but not a roster — a separate review of the live app flagged this as the
 same gap, independently.
 
@@ -540,7 +540,7 @@ console` (the runtime image has no `sqlite3` CLI, so this used `node:sqlite`
 — the same module the app itself uses — rather than installing a new tool):
 a `rooms_old` table was still sitting on the volume, left over from
 `ensureRoomsHaveWaitingStatus()`'s rename-recreate-copy-drop migration
-(`76be42c`, the host-roles commit). That function's final `DROP TABLE
+(`4ce5b3f`, the host-roles commit). That function's final `DROP TABLE
 rooms_old` never ran on a prior boot — the process crashed before reaching
 it — and the function's own "already migrated?" check only looks at whether
 `rooms` has the new schema, so every later boot skipped the migration branch
@@ -581,7 +581,7 @@ as far as the first investigation went) surfaced the actual shape: SQLite's
 `ALTER TABLE rooms RENAME TO rooms_old` doesn't just rename that one table —
 it silently rewrites *every other table's* `REFERENCES rooms(id)` clause to
 point at `rooms_old` instead, since SQLite's rename follows the reference.
-`76be42c`'s migration never re-pointed `room_participants`/`qa_entries`
+`4ce5b3f`'s migration never re-pointed `room_participants`/`qa_entries`
 afterward, so their schema has said `REFERENCES "rooms_old"(id)` since that
 commit — invisible the whole time `rooms_old` still physically existed to
 satisfy it. Dropping `rooms_old` turned an inert latent bug into an active
@@ -639,7 +639,7 @@ individually-tested changes rather than one large one, per this repo's own
 git-discipline rule.
 
 ### Homepage rebuild
-[`116fc38`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-yanzzzzzzzz/commit/116fc38)
+[`c854ebf`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-yanzzzzzzzz/commit/c854ebf)
 replaced the old two-line hero with: an original inline-SVG illustration
 (a bowl, rising steam, a question mark, a magnifying glass — hand-drawn
 `<path>`/`<circle>` shapes, not traced or downloaded art) sized and colored
@@ -651,11 +651,11 @@ correct in the FAQ's own wording); a "from the case library" preview drawn
 from `listAvailablePuzzles()` (same function the room-creation picker uses,
 so it can't leak a solution — it never selects that column); and the
 required content warning, in the brief's own Chinese wording plus an English
-gloss ([`ae53b82`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-yanzzzzzzzz/commit/ae53b82)
+gloss ([`2bcb396`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-yanzzzzzzzz/commit/2bcb396)
 fixed a first pass that had paraphrased it in English only).
 
 ### Reasoning-time accounting
-Also in `116fc38`. The brief's hardest constraint: real time, counted from
+Also in `c854ebf`. The brief's hardest constraint: real time, counted from
 zero as of this feature (no backfilled history, no borrowed reference-site
 number), deduped per anonymous session across tabs/rooms, server-trusted
 rather than client-reported, and immune to idle/background/restart padding.
@@ -695,7 +695,7 @@ confirms a real ~3s gap credits ~3s, not an arbitrary number; confirms two
 rooms under one session don't double-count an overlapping gap.
 
 ### Stopping the silently-faked AI judge
-[`5b095f4`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-yanzzzzzzzz/commit/5b095f4)
+[`0727b36`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-yanzzzzzzzz/commit/0727b36)
 finally root-caused the open item from the previous entry above, rather than
 just re-flagging it. `src/llm.ts`'s `judge()` treated "no `GROQ_API_KEY`" as
 "use the mock" unconditionally — which is exactly right for CI/local testing
@@ -722,7 +722,7 @@ can answer. Not claiming the live site is fixed — only that the code no
 longer contains the bug that caused what was observed there.
 
 ### Lobby/room UX fixes
-[`0cee40a`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-yanzzzzzzzz/commit/0cee40a):
+[`6678723`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-yanzzzzzzzz/commit/6678723):
 - **Multi-tab online-count dedup.** `connectionCount()`/`listMembers()` in
   `src/sse.ts` counted every open SSE connection, so one person with two
   tabs on a room showed up as two people — in the room sidebar, the lobby
@@ -745,14 +745,14 @@ longer contains the bug that caused what was observed there.
   previously looked, to someone watching the page, identical to a stuck one.
 
 ### A migration-safety bug found while verifying migration safety
-[`7965107`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-yanzzzzzzzz/commit/7965107).
+[`45e6e48`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-yanzzzzzzzz/commit/45e6e48).
 The brief's migration requirement ("verify with a local old-schema fixture
 that it preserves data") is what surfaced this: building a fixture from the
 exact schema the UNMODIFIED, already-committed `src/db.ts` would have left
 on disk, seeded with a real room/participants/transcript/authored puzzle,
 and migrating it through that unmodified code wiped every one of those rows
 on the very next boot. Not a bug this session introduced — present since
-`76be42c` (player-authored puzzles), latent because nobody had tested a
+`4ce5b3f` (player-authored puzzles), latent because nobody had tested a
 restart against a database holding one.
 
 Root cause: `seedPuzzlesIfEmpty()` reconciled the whole `puzzles` table
@@ -794,7 +794,7 @@ here since the brief asks for the steps to be written down:
    again.
 3. **Verify**: hit the deployed URL's `/` and a known room's `/rooms/:code`
    immediately after the deploy settles; `flyctl logs` for any migration
-   error (the pattern from the `e1bc624`/`26c13e7` incidents above).
+   error (the pattern from the `1e94936`/`9856f3e` incidents above).
 4. **Rollback**: if a migration leaves the database in a bad state, restore
    the backed-up `app.db` (`flyctl ssh sftp shell` to put it back, or the
    base64 round-trip) and `flyctl releases rollback` to the previous image,
@@ -819,7 +819,7 @@ regression in the thing the brief is graded on (real-time), not a cosmetic
 gap, so it came before the visual/translation work rather than after.
 
 ### Chinese translation, with a migration-safety catch
-[`fd32672`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-yanzzzzzzzz/commit/fd32672)
+[`6030118`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-yanzzzzzzzz/commit/6030118)
 rewrote the nine built-in puzzles' title/premise/solution natively in
 Chinese (not machine-translated from the English versions), plus the
 auto-generated labels that appear in every room regardless of puzzle content
@@ -828,9 +828,9 @@ auto-generated labels that appear in every room regardless of puzzle content
 
 The real risk, caught before shipping it: `seedMissingPuzzles()` reconciled
 official puzzles by exact `(title, premise, solution)` text equality (added
-in the prior session's migration-safety fix, [`7965107`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-yanzzzzzzzz/commit/7965107)).
+in the prior session's migration-safety fix, [`45e6e48`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-yanzzzzzzzz/commit/45e6e48)).
 Rewriting that text in code would make every rewritten puzzle look like a
-*new* row on the next boot — not the data-loss bug `7965107` fixed, but a
+*new* row on the next boot — not the data-loss bug `45e6e48` fixed, but a
 real content-drift bug: translating the seed data wouldn't update anything a
 real room already points at, since its `puzzle_id` would still reference the
 old English row sitting unchanged alongside a new Chinese duplicate. Fixed
@@ -895,7 +895,7 @@ before writing any fix:
   an unexamined claim.
 
 ### The fix
-[`20e5aba`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-yanzzzzzzzz/commit/20e5aba):
+[`e458a08`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-yanzzzzzzzz/commit/e458a08):
 
 - **`/lobby/stream` sends an authoritative snapshot on every connect.**
   Instead of only pushing incremental "a room changed" events, the instant
@@ -975,7 +975,7 @@ latest, more specific instruction governs over the session that came before
 it. The Chinese visual-theme rework that was "carried forward" above is
 explicitly out of scope for this pass — continuing it was ruled out in favor
 of finishing the language flip and getting it live
-([`115d992`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-yanzzzzzzzz/commit/115d992)).
+([`114f0ec`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-yanzzzzzzzz/commit/114f0ec)).
 
 **Scope boundary, held deliberately**: user-authored puzzle stories,
 nicknames, avatars, bios, and every historical transcript/chat entry already
@@ -1066,7 +1066,7 @@ homepage's "Start a new case" and "Browse every case" buttons both pointed
 at `/rooms/new`, so "browse" never actually showed anyone what was playable.
 
 **Short About page**
-([`d1b4fb0`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-yanzzzzzzzz/commit/d1b4fb0)):
+([`a87b9f3`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-yanzzzzzzzz/commit/a87b9f3)):
 added a real `/about` route — title, a one-line premise, the three-step
 loop (read the premise, ask the shared AI judge yes/no/irrelevant questions,
 solve it together and submit a guess), how a room starts, the content
@@ -1084,7 +1084,7 @@ implying the judge is always configured — matches the real
 without exposing which one is live.
 
 **`/cases`, and actually wiring the preselect it needs**
-([`c5290c3`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-yanzzzzzzzz/commit/c5290c3)):
+([`a2c65d4`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-yanzzzzzzzz/commit/a2c65d4)):
 root cause of the duplicate-link bug was literal — `home.ts`'s "Browse every
 case" `<a>` had just never been pointed anywhere but `/rooms/new`, the same
 href "Start a new case" uses. Fixing the link alone would have made
@@ -1158,9 +1158,9 @@ independently green (`pnpm check` + `pnpm build` run against its own
 isolated checkout before the next commit started), not one combined diff.
 
 ### Nav rework and an opt-in, honestly-stated music toggle
-[`6097931`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-yanzzzzzzzz/commit/6097931),
+[`66370b0`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-yanzzzzzzzz/commit/66370b0),
 fixed by
-[`60ed5d0`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-yanzzzzzzzz/commit/60ed5d0).
+[`33e0ad2`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-yanzzzzzzzz/commit/33e0ad2).
 
 Modeled on tanghenre.com's structure (an icon+wordmark brand linking home,
 a small top nav, no login button) without copying any of its art or copy:
@@ -1223,18 +1223,18 @@ accurate "on", a rejected `play()` never claiming "on", the
 disabled-when-unsupported path, and fail-safe behavior when `localStorage`
 throws — plus a direct fetch of the served audio file confirming its
 "OggS" signature and a >100KB size (not a truncated or HTML-error
-download). `60ed5d0` is a same-session self-correction: the first commit's
+download). `33e0ad2` is a same-session self-correction: the first commit's
 own `spec/nav.test.ts` asserted against `/community`, a route that didn't
 exist until a later commit — caught by re-running `pnpm check` against a
 clean checkout of just that one commit (not the cumulative working tree),
-the same discipline `1b25e42`'s red-CI entry earlier in this file already
+the same discipline `4d24726`'s red-CI entry earlier in this file already
 established as the lesson. Full suite 53/53 at that commit in isolation.
 
 ### Community story reviews: real per-session reviews, no forum, no spoilers by default
-[`9928d0e`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-yanzzzzzzzz/commit/9928d0e).
+[`1d0f449`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-yanzzzzzzzz/commit/1d0f449).
 
 New `story_reviews` table, added the same additive way every migration in
-this file has been since the `7965107` data-loss fix: `CREATE TABLE IF NOT
+this file has been since the `45e6e48` data-loss fix: `CREATE TABLE IF NOT
 EXISTS` plus one supporting index, no `ALTER` on any existing table, no
 reseed. `UNIQUE(puzzle_id, session_id)` is the entire mechanism behind "one
 review per session per story, author can edit, nobody else can" —
@@ -1320,7 +1320,7 @@ nav and FAQ actually looked once built. Each shipped as its own commit,
 per this session's "independent logical change → independent commit" rule.
 
 **Nav layout: grouped left, not centered**
-([`063d479`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-yanzzzzzzzz/commit/063d479)).
+([`59657c3`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-yanzzzzzzzz/commit/59657c3)).
 The first nav commit's `.site-header` used `justify-content: space-between`
 across all three flex children (brand, nav, `.site-controls`) — which
 spreads three items evenly across the header's width, landing
@@ -1358,7 +1358,7 @@ this session** (no GUI browser available, consistent with every prior
 still the user's/Codex's to do against the next live preview.
 
 **FAQ: independently-collapsible `<details>`, not one big reveal**
-([`0a42121`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-yanzzzzzzzz/commit/0a42121)).
+([`4e09d53`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-yanzzzzzzzz/commit/4e09d53)).
 User feedback, explicitly modeled on tanghenre.com's FAQ pattern: the old
 `<dl>` showed every question and its full answer at once, with no way to
 scan just the questions. Reworked each item into its own `<details>`
@@ -1424,7 +1424,7 @@ preview, same caveat as every prior visual-only pass in this file.
   decide when to push and redeploy.
 
 *(Update from the next session: all six commits above were pushed to
-`origin/main` — HEAD at [`1420f4d`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-yanzzzzzzzz/commit/1420f4d)
+`origin/main` — HEAD at [`77beb67`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-yanzzzzzzzz/commit/77beb67)
 — and deployed to the live Fly app. Production was backed up first with
 `node:sqlite`'s real `backup()` API to
 `/data/app-before-community-1793160826209.db`, verified with
@@ -1460,7 +1460,7 @@ a URL a browser has never cached, without pulling in a bundler, a service
 worker, or any external dependency — this repo has no build step for
 `public/` assets to hash, so a hand-bumped release string is the simplest
 thing that actually fixes the bug within the existing stack. Commit:
-[`a6ece0c`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-yanzzzzzzzz/commit/a6ece0c).
+[`932790a`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-yanzzzzzzzz/commit/932790a).
 
 `spec/music.test.ts`'s exact-string assertion on
 `<script src="/music.js">` no longer matches once the URL carries a query
@@ -1513,7 +1513,7 @@ scene photos) and handed over via a path outside this repo that the
 session's launcher explicitly authorized reading from (not a URL, not a
 hotlink).
 
-[`42fa12c`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-yanzzzzzzzz/commit/42fa12c)
+[`b54aca8`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-yanzzzzzzzz/commit/b54aca8)
 adds `scripts/process-images.mjs` (using `sharp`, added as a devDependency
 since no `cwebp`/`avifenc`/ImageMagick binary existed in this sandbox) to
 turn whatever full-resolution source PNGs exist in a given directory into
@@ -1530,7 +1530,7 @@ the time, not reconstructed afterward.
 
 ### The rework itself
 
-[`368f2e6`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-yanzzzzzzzz/commit/368f2e6)
+[`f3f6e93`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-yanzzzzzzzz/commit/f3f6e93)
 is the core change. Two real decisions worth recording beyond what the
 commit message already covers in full:
 
@@ -1565,7 +1565,7 @@ rendering their real CTAs and content with zero JS executed, a
 rating/difficulty text) against an isolated local server, never the course's
 own 8080/8081/8083 preview processes.
 
-[`1d4850e`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-yanzzzzzzzz/commit/1d4850e)
+[`2830d8f`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-yanzzzzzzzz/commit/2830d8f)
 is a one-line follow-up: the hero's full-bleed `width: 100vw` technique can
 read a few pixels wider than the viewport on a desktop browser with a
 non-overlay scrollbar (100vw includes the scrollbar's own width), producing
@@ -1578,7 +1578,7 @@ Manually re-running the full suite many times against the same long-lived
 local dev server (deliberately never restarted between checks, to catch
 regressions fast) surfaced two distinct, previously-latent problems —
 recorded in
-[`632d2d0`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-yanzzzzzzzz/commit/632d2d0)
+[`999297f`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-yanzzzzzzzz/commit/999297f)
 rather than silently worked around by retrying until green, per this file's
 own standing rule:
 
@@ -1641,7 +1641,7 @@ around) with no real visual room, with the same problem worse on mobile
 where the column is the whole viewport.
 
 One commit
-([`72ad1b5`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-yanzzzzzzzz/commit/72ad1b5))
+([`e9b1d32`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-yanzzzzzzzz/commit/e9b1d32))
 addressed every specific point raised, all scoped to `src/render/home.ts`
 and `public/styles.css`:
 
@@ -1743,7 +1743,7 @@ browser, the same standing limitation recorded in every prior visual-pass
 entry in this file. The user's local preview (restarted by Codex after this
 commit, on port 8083) is the next real visual check, not this session.
 
-Commit: [`72ad1b5`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-yanzzzzzzzz/commit/72ad1b5).
+Commit: [`e9b1d32`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-yanzzzzzzzz/commit/e9b1d32).
 Local only, not pushed, per this session's explicit authorization.
 
 ## The hero-to-page seam: a real visual bug, not a caching artifact
@@ -1758,7 +1758,7 @@ than one continuous page. This session's instruction was explicit not to
 re-explain caching or treat a margin tweak as sufficient — the fill color
 and borders themselves were the bug.
 
-Root cause, read directly from the CSS the prior commit shipped: `72ad1b5`
+Root cause, read directly from the CSS the prior commit shipped: `e9b1d32`
 moved the content warning and join form out of the hero (correctly, per
 that session's ask) but gave each new section its own visual identity —
 `.join-strip` had `background: var(--bg-raised)` plus a `border-bottom`,
@@ -1767,7 +1767,7 @@ the hero didn't make the page feel continuous, it just relocated the visual
 break one section down and added a second one next to it.
 
 **Fix**
-([`afc57d7`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-yanzzzzzzzz/commit/afc57d7)):
+([`0acfda2`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-yanzzzzzzzz/commit/0acfda2)):
 
 - Stripped every `background`/`border`/`border-bottom` off both
   `.below-hero-info` and `.join-strip` — both now sit directly on the
@@ -1839,7 +1839,7 @@ reviewing a mix of new CSS against old cached HTML or vice versa — that
 real-browser pass is explicitly deferred to after the next commit below,
 not treated as done here.
 
-Commit: [`afc57d7`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-yanzzzzzzzz/commit/afc57d7).
+Commit: [`0acfda2`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-yanzzzzzzzz/commit/0acfda2).
 Local only, not pushed, per this session's explicit authorization — the
 "open case file" room-creation redesign the user also asked for in the same
 message continues immediately below, in the same session, without resetting
@@ -1864,7 +1864,7 @@ nothing's picked), and a right "page" with room settings and the submit
 button, both inside one real form.
 
 **Structure**
-([`b6b091f`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-yanzzzzzzzz/commit/b6b091f)):
+([`f5b13aa`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-yanzzzzzzzz/commit/f5b13aa)):
 `src/render/room-new.ts` rewritten so "Choose a case" / "Write your own" are
 folder tabs (`.case-tabs`) above a `.case-file-desk` surface, and both modes
 render exactly one `<form id="create-form">` spanning two visual halves via
@@ -1953,14 +1953,14 @@ local preview (port 8083) now that both the hero-seam fix and this
 room-creation redesign are committed, specifically to avoid reviewing new
 CSS/JS against stale cached HTML or vice versa.
 
-Commit: [`b6b091f`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-yanzzzzzzzz/commit/b6b091f).
+Commit: [`f5b13aa`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-yanzzzzzzzz/commit/f5b13aa).
 Local only, not pushed, per this session's explicit authorization.
 
 
 ## Fixing the case-file's readability bug, and giving the two modes a real layout difference
 
 A real-browser check against this session's port-8083 preview (the one
-Codex restarted after `0979b40`) found a genuine bug the test suite never
+Codex restarted after `c6e81ac`) found a genuine bug the test suite never
 caught, since no existing test asserted color contrast: the room-settings
 panel (`.case-file-right`) kept the site-wide dark `--bg-raised` background
 while its own CSS still set `--paper-ink` (a near-black ink tone meant for
@@ -2044,7 +2044,7 @@ author mode (the DOM-order claim above, not just a visual claim).
 the same session also asked for — tracked as separate, independently
 committed passes below, per the user's own "readability first" ordering.
 
-Commit: [`02bdaca`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-yanzzzzzzzz/commit/02bdaca).
+Commit: [`54e76df`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-yanzzzzzzzz/commit/54e76df).
 Local only, not pushed, per this session's explicit authorization.
 
 ## Optional cover-image upload for player-authored cases
@@ -2183,7 +2183,7 @@ case" and "Write your own," and the per-mode draft-preservation /
 browser-history behavior that transition requires — tracked as a separate,
 independently committed pass below.
 
-Commit: [`73c81d9`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-yanzzzzzzzz/commit/73c81d9).
+Commit: [`b99e9b8`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-yanzzzzzzzz/commit/b99e9b8).
 Local only, not pushed, per this session's explicit authorization.
 
 ## Instant mode switching, after the user's own real-browser test rejected the flip animation
@@ -2261,7 +2261,7 @@ after this pass. Port 8085 specifically carries the now-abandoned flip
 animation the user already saw and rejected — not this commit's own
 no-animation result, which Codex will preview fresh.
 
-Commit: [`a988225`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-yanzzzzzzzz/commit/a988225).
+Commit: [`482d8bc`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-yanzzzzzzzz/commit/482d8bc).
 Local only, not pushed, per this session's explicit authorization.
 
 ## Pushing and deploying the 17 local-only commits above
@@ -2275,10 +2275,10 @@ authorized pushing and deploying all of it, reverting to this repo's
 standing CLAUDE.md rule of pushing every commit immediately.
 
 **Push**: `git push origin main` succeeded, fast-forwarding
-`origin/main` from `538e915` to
-[`862bb24`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-yanzzzzzzzz/commit/862bb24)
-— the 17 commits from `42fa12c` (original mystery-theme photography) through
-`862bb24` (linking the no-animation commit hash), spanning every pass
+`origin/main` from `e65f349` to
+[`79f8b00`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-yanzzzzzzzz/commit/79f8b00)
+— the 17 commits from `b54aca8` (original mystery-theme photography) through
+`79f8b00` (linking the no-animation commit hash), spanning every pass
 documented in the sections above back to "A visual rework: the 'mystery
 investigation club / case archive' pass."
 
@@ -2315,9 +2315,9 @@ session's deploy path called for using it.
 `https://comp4020-final-yanzzzzzzzz.fly.dev/rooms/new?mode=author` in a real
 browser and confirmed: the cover-image upload entry point is present and
 usable, switching to "Choose a case" no longer causes a page reload (the
-instant DOM swap from `a988225` works live, not just under `jsdom`), and the
+instant DOM swap from `482d8bc` works live, not just under `jsdom`), and the
 case-file panel's text is legible against its warm-paper background (the
-contrast fix from `02bdaca` holds on the real deployed CSS, not just the
+contrast fix from `54e76df` holds on the real deployed CSS, not just the
 computed-ratio check recorded above). This is the extent of what was
 actually clicked through this session — it is not a claim that the full
 multi-player ask/judge/solve flow, the cover-upload pipeline, or any other
@@ -2326,14 +2326,14 @@ uploaded to the live site as part of this check.
 
 **Test suite**: not rerun this session. The 113/113 full suite,
 `pnpm typecheck`, and `pnpm build` all passed three times consecutively in
-the immediately preceding session (recorded in the `a988225` entry above);
+the immediately preceding session (recorded in the `482d8bc` entry above);
 this session treated that as still current rather than re-running a suite
 whose code hadn't changed, per the user's own instruction to keep this pass
 documentation-only.
 
 **API keys**: not read, changed, or printed this session.
 
-Commits: [`538e915..862bb24`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-yanzzzzzzzz/compare/538e915...862bb24).
+Commits: [`e65f349..79f8b00`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-yanzzzzzzzz/compare/e65f349...79f8b00).
 
 ## Moving the AI judge from Groq to Gemini
 
@@ -2567,9 +2567,9 @@ the full suite passing — 143/143 (113 pre-existing + 30 new: 24 in
 isolated local server on port 8082.
 
 Commits:
-[`78ac977`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-yanzzzzzzzz/commit/78ac977)
+[`785764a`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-yanzzzzzzzz/commit/785764a)
 (the Gemini judge, the room lock, the mock-fetch contract tests) and
-[`86eaf68`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-yanzzzzzzzz/commit/86eaf68)
+[`6acdf9f`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-yanzzzzzzzz/commit/6acdf9f)
 (README.md's "The AI judge" section rewritten for Gemini, stale Groq
 references in `spec/about.test.ts`/`spec/rooms.test.ts` corrected). Both
 local only, not pushed, per this session's explicit local-changes-only
@@ -2583,7 +2583,7 @@ With explicit authorization to push/deploy and run small real-API tests
 (scope this repo's standing rules otherwise reserve for the account that
 owns the Fly app and its secrets), the local-only Gemini-migration commits
 from the previous entry were pushed:
-`31e6b06..fad6e9e` went to `origin/main`, and the deploy succeeded — Fly
+`6d846ed..dd6c2b5` went to `origin/main`, and the deploy succeeded — Fly
 reports the machine healthy post-deploy. Before deploying, `/data/app.db`
 was backed up to `/data/app-before-community-1793234847117.db`; its
 integrity was checked and it held 4 rooms / 12 entries, consistent with the
@@ -2623,7 +2623,7 @@ every other field the author had typed when sharp's decode failed on it.
 Root-caused by hand-building that exact multipart body in isolation and
 checking Node's own `FormData` parser confirmed the same File(name="",
 size=0) shape — not guessed from the symptom. Fixed in
-[`96c4332`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-yanzzzzzzzz/commit/96c4332):
+[`ab540a3`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-yanzzzzzzzz/commit/ab540a3):
 the "field is a File" check now excludes exactly that empty sentinel (name
 `""` and size `0`), so a real upload — including a genuinely bad or
 zero-byte *named* file — still goes through the existing too-small/corrupt/
@@ -2713,12 +2713,12 @@ already supports.
 
 ### The cover-upload fix is now live too
 
-Separately, root also pushed and deployed `96c4332` (the empty-file-input
+Separately, root also pushed and deployed `ab540a3` (the empty-file-input
 cover-upload fix from the previous entry, at that point local-only). Before
 deploying, `/data` was backed up to
 `/data/app-before-community-1793235369980.db`; its integrity was checked and
 it held 5 rooms / 14 entries at backup time. A real Chromium test then
-exercised the exact scenario `96c4332` fixes — "Write your own" with no
+exercised the exact scenario `ab540a3` fixes — "Write your own" with no
 cover image chosen — against the live site, and it succeeded: room `CK7FY`
 was created (not shared) with the archive's fallback cover image, not a
 `notice=corrupt` rejection. This confirms the fix holds against a real
@@ -2727,11 +2727,11 @@ suite's hand-built request from before.
 
 Commits already on `origin/main` covering this work, for anyone verifying
 against hashes: the Gemini judge and room lock
-([`78ac977`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-yanzzzzzzzz/commit/78ac977)),
+([`785764a`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-yanzzzzzzzz/commit/785764a)),
 the empty-cover-upload fix
-([`96c4332`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-yanzzzzzzzz/commit/96c4332)),
+([`ab540a3`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-yanzzzzzzzz/commit/ab540a3)),
 and the previous entry recording the push and the then-401 key
-([`d709b2c`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-yanzzzzzzzz/commit/d709b2c)).
+([`ae9bb8e`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-yanzzzzzzzz/commit/ae9bb8e)).
 This session added no new code commit — only this PROCESS.md entry.
 
 ## Judge leniency, a readable transcript, and a real multiline composer
@@ -2751,7 +2751,7 @@ explanation is exactly as valid as the solution's own phrasing, and that
 detail the premise never needed explained isn't required — while keeping
 "incomplete" scoped to an actually-missing cause/twist and "incorrect" to a
 real contradiction, never a wording mismatch
-([`b7e353a`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-yanzzzzzzzz/commit/b7e353a)).
+([`60af070`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-yanzzzzzzzz/commit/60af070)).
 New contract tests in `spec/gemini-judge.test.ts` pin the prompt text this
 file sends — they prove what instruction goes out, not that a real Gemini
 call actually judges any given paraphrase correctly; that remains provable
@@ -2761,7 +2761,7 @@ schema, the DB verdict enum, the fixed reply sentences, or the mock judge's
 own logic.
 
 **The transcript and composer**
-([`315624e`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-yanzzzzzzzz/commit/315624e))
+([`9fbaed9`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-yanzzzzzzzz/commit/9fbaed9))
 replace the single-line `maxlength="200"` `<input>` with a `<textarea>`
 backed by a new `src/limits.ts` `QUESTION_MAX_LENGTH` (2000) shared between
 the server route and the render/client, so the enforced and advertised
@@ -2809,7 +2809,7 @@ composed, limited, and displayed.
 
 ## Cache-busting the deployed composer/transcript JS and CSS
 
-Root pushed and deployed `315624e` (the textarea composer and transcript
+Root pushed and deployed `9fbaed9` (the textarea composer and transcript
 rework above), but `src/render/asset.ts`'s `RELEASE` constant — its own
 documented rule is to bump on every `/public` byte change, since a browser
 or edge cache keys a static asset by URL indefinitely — was still
@@ -2820,11 +2820,11 @@ against the NEW server-rendered markup (the `<textarea>`, the ownership-
 based `entry-own`/`entry-other` classes) — a real mismatch, not a cosmetic
 one, since the old JS's `renderEntry()` doesn't know those classes exist.
 Bumped to `20261029-room-conversation-1`
-([`9f6ffff`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-yanzzzzzzzz/commit/9f6ffff)),
+([`ceba8e0`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-yanzzzzzzzz/commit/ceba8e0)),
 verified against a freshly restarted isolated server that the homepage's
 asset URLs carry the new string and not the old one.
 
-Root's own deployment record for `315624e`, for anyone verifying against
+Root's own deployment record for `9fbaed9`, for anyone verifying against
 production: `/data` was backed up to
 `/data/app-before-community-1793246749318.db` before deploying; its
 integrity checked out, holding 6 rooms / 24 entries at backup time. Root
@@ -2837,8 +2837,8 @@ after this bump.
 
 ## Live verification: judge leniency and the new composer, in production
 
-Root ran this against the deployed app after `fc0d9ea` pushed
-(`b7e353a`'s judge prompt, `315624e`'s transcript/composer, `9f6ffff`'s
+Root ran this against the deployed app after `d93fcf2` pushed
+(`60af070`'s judge prompt, `9fbaed9`'s transcript/composer, `ceba8e0`'s
 cache bump). Room `F6463` ("The Elevator Routine"): a first final guess,
 "He is short.", correctly came back incomplete — on the right track, missing
 the mechanism. A second final guess, submitted verbatim as typed — "short
@@ -2846,14 +2846,14 @@ guy cant reach 10, only 7, so walks the rest. rainy days hes got an umbrela
 and pokes the 10 button with it." — came back **Correct!**, solving the room
 and revealing the solution. That guess has no capitalization, a dropped
 apostrophe, and two misspellings ("umbrela," and the missing one in "cant"),
-which is exactly the leniency `b7e353a`'s prompt change asked for: informal,
+which is exactly the leniency `60af070`'s prompt change asked for: informal,
 typo-bearing wording judged on substance, not penalized for not matching the
 solution's own phrasing. Two real Gemini calls validate this one case; it
 isn't proof of universal accuracy, same caveat this file's earlier "what six
 real calls actually prove" entry already carries.
 
 The new 2000-character `<textarea>` and its explicit too-long rejection
-(`315624e`) and the transcript's ownership-based roles held up over SSR and
+(`9fbaed9`) and the transcript's ownership-based roles held up over SSR and
 the live SSE stream. Local verification before this push: `pnpm test`
 (148 passed) against an isolated server, with a root browser check catching
 and fixing the `<li>`/`<p>` `entry-question` selector collision and the
@@ -2868,7 +2868,7 @@ A user report started this run: the author-mode cover-upload control
 showed Chinese ("选择文件"/"未选择任何文件") on a non-English browser,
 because that text is the native `<input type="file">`'s own rendering,
 which follows the browser/OS locale, never the page's language. Fixed in
-[`b3734d0`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-yanzzzzzzzz/commit/b3734d0f3034fb70af57601aaf5301aa5bf30df2):
+[`928e88b`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-yanzzzzzzzz/commit/928e88ba3f50500fbddfc53d5042154319cbf302):
 the real file input stays fully functional (same name, same multipart
 encoding, same accept list, still a real focusable labelled control) but
 its own native chrome is hidden via CSS only, replaced with a site-owned
@@ -2885,13 +2885,13 @@ the shared archive photo — generated with Codex's `image_gen` tool
 (prompts and provenance in `ASSET_LICENSES.md`), each inspected for
 landscape framing, no text/logo/watermark, and no detail that spoils the
 puzzle's own solution, in
-[`0d70187`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-yanzzzzzzzz/commit/0d7018765f26bf18e49995a24f3936eb6acc5474).
+[`ed30d95`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-yanzzzzzzzz/commit/ed30d957ecdbae32079e997e0fc9d1ecbbec0522).
 All eight built-ins now have a unique dedicated cover; the archive photo
 is reachable only by a player-authored puzzle with no uploaded cover.
 
 The homepage/lobby's "open cases" room cards showed title/status/code/
 host/players but no image, in
-[`bff10d2`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-yanzzzzzzzz/commit/bff10d27ecf896a9ea4abb23f22e75554ae442b7).
+[`97af362`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-yanzzzzzzzz/commit/97af362aad2a5e2446f841e0a076197aace98968).
 The one real design decision: a room playing a PRIVATE (unshared)
 authored puzzle is still legitimately listed in the lobby, but the
 existing `GET /uploads/cover/:puzzleId` route deliberately refuses anyone
@@ -2902,7 +2902,7 @@ title/premise/solution beyond what the card already shows) and only
 while the room is actually listed — once solved, the same URL 404s.
 
 Two renames landed in
-[`040eb59`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-yanzzzzzzzz/commit/040eb59146bed393cf434e4d9c48502a345b75e0):
+[`f8f4b6d`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-yanzzzzzzzz/commit/f8f4b6d920bead5ab0d779ad6bbfb7b2fb6fda6a):
 the default anonymous label is now "Mystery Detective #N" (was "Anonymous
 Detective#N"), and the AI judge is shown to players as "Your Partner,
 Watson" (`JUDGE_DISPLAY_NAME`, `src/llm.ts`) — presentation only, no
@@ -2911,17 +2911,17 @@ message's underlying text. A historical label already on disk (the old
 shape) upgrades to the new text at RENDER time only
 (`formatAutoLabel()`), never rewritten in the database — confirmed by
 `spec/migration.test.ts`'s fixture, which still asserts the raw stored
-value is the old text. **Self-caught process note**: commit `bff10d2`'s
+value is the old text. **Self-caught process note**: commit `97af362`'s
 `src/render/home.ts` already imported `JUDGE_DISPLAY_NAME` in
 anticipation of this rename, but that commit's own `src/llm.ts` didn't
 yet export it — an intermediate commit that doesn't build standalone,
-caught on review before `040eb59` landed. Fixed forward (the export
-ships in `040eb59`) rather than rewritten, since `bff10d2` was already on
+caught on review before `f8f4b6d` landed. Fixed forward (the export
+ships in `f8f4b6d`) rather than rewritten, since `97af362` was already on
 `main`; the working tree was green at every commit boundary from
-`040eb59` onward.
+`f8f4b6d` onward.
 
 Finally, profile avatar upload shipped in
-[`7c4bb13`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-yanzzzzzzzz/commit/7c4bb134cc1ec357b39622c4a12c940f44118397):
+[`2052af1`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-yanzzzzzzzz/commit/2052af1eabdf37d987577e9b3bf19301c7f11f5a):
 a custom image (JPEG/PNG/WebP ≤2 MiB, real sharp decode, center-cropped
 to a fixed 256×256 WebP) takes priority over a selected emoji/AI-art
 preset, which takes priority over the default art — one resolver
@@ -2948,7 +2948,7 @@ POST, matching the room heartbeat and community-review routes' existing
 guard.
 
 Verified throughout this run: `pnpm typecheck` and the full `pnpm test`
-suite (172 tests passing by `7c4bb13`) against isolated local servers on
+suite (172 tests passing by `2052af1`) against isolated local servers on
 ports 8091–8093 — never the root dev server — each with its own
 throwaway `DATA_DIR` and `ALLOW_MOCK_JUDGE=1`, restarted after every
 source change via a small `node` wrapper script so `APP_URL` could be set
@@ -2963,13 +2963,13 @@ typed an unsaved nickname ("Avatar QA") and bio ("Avatar upload draft
 verification") into the separate nickname/bio form, then submitted the
 avatar upload. The upload itself worked — the image persisted — but the
 redirect to `/profile?saved=1` silently dropped both unsaved text fields,
-because the draft-preservation query params `7c4bb13` added were only
+because the draft-preservation query params `2052af1` added were only
 ever attached to the rejection/no-file-chosen redirects, never the
 success path, which is the one a working upload actually takes every
 time.
 
 Fixed in
-[`148c443`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-yanzzzzzzzz/commit/148c4432b1b32c8b0e4fa8f31f3f3a04d1e21a68):
+[`715cb5a`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-yanzzzzzzzz/commit/148c4432b1b32c8b0e4fa8f31f3f3a04d1e21a68):
 the draft query string is now built once per request and attached to
 every redirect `POST /profile/avatar` and `POST /profile/avatar/remove`
 can produce, success included. Caught and fixed in the same pass: the old
@@ -3009,7 +3009,7 @@ correctly, but one delivered afterward through `appendEntry()` never did,
 no matter how many `avatar-update` events arrived.
 
 Fixed in
-[`a1c6a1b`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-yanzzzzzzzz/commit/a1c6a1be4e1cc0f9c843ea1c42dec1ad7dd5f8c3):
+[`dc0741e`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-yanzzzzzzzz/commit/a1c6a1be4e1cc0f9c843ea1c42dec1ad7dd5f8c3):
 `avatarImgHtml()` now takes an optional `authorSessionId`, wired only for
 a player's own question/guess entry — never Watson's judge-reply chip (no
 session to re-target) or the member-list chip (always fully re-rendered
@@ -3042,7 +3042,7 @@ once satisfied.
 
 ### Third follow-up: a production-only 403 on every profile POST, caught by root's post-deploy smoke test
 
-All commits through `3365574` were pushed and deployed healthy (backup
+All commits through `2c79a6e` were pushed and deployed healthy (backup
 `/data/app-before-community-1793257708139.db`, integrity OK, 7 rooms / 29
 entries at backup time; image `deployment-01M637T7214GEXJD59N74H5Q5X`).
 Root's own HTTPS smoke script then hit a real production-only bug: a
@@ -3062,7 +3062,7 @@ tested in (local dev and CI are plain http on both sides; no prior test
 simulated a real HTTPS/Fly-proxied request).
 
 Fixed in
-[`3f2a277`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-yanzzzzzzzz/commit/3f2a277):
+[`765a7df`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-yanzzzzzzzz/commit/765a7df):
 the expected origin is rebuilt from the request URL's own hostname/port
 (never a client-supplied Host/Forwarded-Host/Forwarded-Port header — all
 three are attacker-controlled) with only its scheme corrected from
@@ -3091,7 +3091,7 @@ result, not this local verification alone, is what settles it.
 ## Shipped: cover/lobby/naming/avatar work, deployed and verified live
 
 Root pushed and deployed the full range of this session's commits,
-`d0654ee..3365574` (cover-upload English UI, five more built-in covers,
+`23180d3..2c79a6e` (cover-upload English UI, five more built-in covers,
 room-lobby thumbnails, the "Mystery Detective #N"/"Your Partner, Watson"
 rename, and profile avatar upload with live member/transcript SSE
 updates). 176 tests passed, build and `pnpm check:evidence` both clean.
@@ -3122,10 +3122,10 @@ Root's first HTTPS smoke test then caught a real production-only bug:
 `c.req.url` plain-http internally while the browser's real `Origin` was
 `https://...` — `isSameOrigin()`'s scheme comparison rejected every
 legitimate same-origin request. Root did not claim the release done at
-that point. Fixed in `3f2a277` (proxy-aware scheme correction, gated to
+that point. Fixed in `765a7df` (proxy-aware scheme correction, gated to
 `FLY_APP_NAME`, never widening the hostname/port match), recorded in
-`1a7c107`, 188 tests passing plus a clean build/evidence run — pushed and
-redeployed as `3365574..1a7c107`.
+`db37d42`, 188 tests passing plus a clean build/evidence run — pushed and
+redeployed as `2c79a6e..db37d42`.
 
 Final backup after that redeploy: `/data/app-before-community-1793258242163.db`,
 integrity OK, 7 rooms / 31 entries; final image
@@ -3141,7 +3141,7 @@ a forged cross-origin POST → 403 (confirming the same-origin fix didn't
 overcorrect into accepting everything), avatar removal → 303, the removed
 image's URL → 404, and all eight built-in cover images → 200 on a HEAD
 request, each a distinct file. The draft-preservation fix
-(`148c443`) held on the real redirect: an unsaved nickname/bio typed
+(`715cb5a`) held on the real redirect: an unsaved nickname/bio typed
 before a successful avatar upload was still showing in the form after the
 redirect. No Gemini API calls, no secret reads, and no billing changes
 happened during this release — this smoke test only exercised the
@@ -3161,7 +3161,7 @@ testing didn't touch and isn't what was being verified here.
 
 ### 2026-10-29 — conversation and profile clarity
 
-- Change: feb5408ec56d8e5c5d33ed06564921484c5003c4. Removed duplicate inline Watson verdicts while retaining a standalone historical fallback when a judge reply row is absent. Preserved author-owned avatars and real-time message rendering.
+- Change: 5f765878013d28615dc57b4ba5259b9825491089. Removed duplicate inline Watson verdicts while retaining a standalone historical fallback when a judge reply row is absent. Preserved author-owned avatars and real-time message rendering.
 - Consolidated profile avatar preview/upload/removal, removed the redundant visible emoji picker while preserving stored avatar settings, and replaced paper-ink styles on the dark profile page with dedicated readable styles. Simplified About into three steps, content warning and music credit, with no start/browse CTA as requested.
 - Exact legacy GROQ/GEMINI missing-key transcript notices are hidden in SSR and SSE backfill without deleting database history; current unavailability uses friendly wording. Unrelated timeout/rate-limit messages remain visible.
 - Validation: typecheck, all 194 tests across 24 files, and production build passed against isolated mock server8098. No real AI requests or new image generation. Earlier verification caught a template-comment backtick syntax error and outdated UI assertions; these were corrected before committing.

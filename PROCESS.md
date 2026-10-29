@@ -9,21 +9,18 @@ phases would have enlarged the content problem before the shared interaction
 worked. The chosen unit is one room, one premise, one solution and a shared
 transcript. The initial harness established commit discipline and protected
 course invariants before implementation
-([dca01b8](https://github.com/comp4020-agentic-coding-studio/comp4020-final-yanzzzzzzzz/commit/dca01b8),
-[c4b317b](https://github.com/comp4020-agentic-coding-studio/comp4020-final-yanzzzzzzzz/commit/c4b317b)).
+([7a400d1](https://github.com/comp4020-agentic-coding-studio/comp4020-final-yanzzzzzzzz/commit/7a400d1),
+[8ccce89](https://github.com/comp4020-agentic-coding-studio/comp4020-final-yanzzzzzzzz/commit/8ccce89)).
 
-The definition of good became more specific through feedback: players should
-reason together, know whose contribution they are reading, and receive an
-honest indication of pending work or failure. The current README articulates
-that position. Its references were checked during this final documentation
-revision; they should not be read as proof of literature consulted before
-all earlier implementation decisions.
+Feedback sharpened the standard: shared reasoning, identifiable contributions
+and honest pending/failure states. README references were checked during
+final editing, not necessarily before earlier implementation decisions.
 
 ## Stack and its costs
 
 The initial implementation chose Node 24, TypeScript, Hono, SQLite and
 server-rendered HTML
-([5f5e97b](https://github.com/comp4020-agentic-coding-studio/comp4020-final-yanzzzzzzzz/commit/5f5e97b)).
+([331a3f0](https://github.com/comp4020-agentic-coding-studio/comp4020-final-yanzzzzzzzz/commit/331a3f0)).
 Node's SQLite binding avoided a separate database service and binding build
 step within one 256 MB Fly machine. HTML forms provide a basic request/response
 path; vanilla JavaScript adds live updates. This reduces frontend machinery,
@@ -42,8 +39,8 @@ load-bearing rather than optional operational details.
 The first lobby correction addressed a design failure: people clicking the
 same homepage action could each create an isolated room. Listing joinable
 rooms and broadcasting their creation reused the room pub/sub mechanism
-([1b25e42](https://github.com/comp4020-agentic-coding-studio/comp4020-final-yanzzzzzzzz/commit/1b25e42),
-[05e3929](https://github.com/comp4020-agentic-coding-studio/comp4020-final-yanzzzzzzzz/commit/05e3929)).
+([4d24726](https://github.com/comp4020-agentic-coding-studio/comp4020-final-yanzzzzzzzz/commit/4d24726),
+[9366286](https://github.com/comp4020-agentic-coding-studio/comp4020-final-yanzzzzzzzz/commit/9366286)).
 That pair also records a mistake: splitting dependent frontend/backend changes
 left an intermediate commit that did not typecheck. Keeping the history is
 more honest than presenting every commit as a verified release.
@@ -51,7 +48,7 @@ more honest than presenting every commit as a verified release.
 Later reports that rooms required refreshing exposed three concrete gaps:
 a lobby subscription race, missing status broadcasts and swallowed submission
 errors. Their correction was behavioural, not cosmetic
-([20e5aba](https://github.com/comp4020-agentic-coding-studio/comp4020-final-yanzzzzzzzz/commit/20e5aba)).
+([e458a08](https://github.com/comp4020-agentic-coding-studio/comp4020-final-yanzzzzzzzz/commit/e458a08)).
 Session-owned messages, presence and host-controlled starting make other
 players visible without requiring accounts. This simplicity costs cross-device
 identity recovery and automatic host succession, which remain outside scope.
@@ -62,9 +59,9 @@ Translating seed files did not translate rows already stored on Fly. Later
 reconciliation needed stable puzzle identities and had to distinguish reference
 content from player data. A migration verification pass caught actual data
 loss, followed by a correction
-([7965107](https://github.com/comp4020-agentic-coding-studio/comp4020-final-yanzzzzzzzz/commit/7965107)).
+([45e6e48](https://github.com/comp4020-agentic-coding-studio/comp4020-final-yanzzzzzzzz/commit/45e6e48)).
 The final English reconciliation uses stable slugs
-([115d992](https://github.com/comp4020-agentic-coding-studio/comp4020-final-yanzzzzzzzz/commit/115d992)).
+([114f0ec](https://github.com/comp4020-agentic-coding-studio/comp4020-final-yanzzzzzzzz/commit/114f0ec)).
 The archived record also describes production foreign-key failures where a
 matching error message was insufficient evidence of a matching database schema.
 These incidents support testing upgrades against populated databases, inspecting
@@ -76,17 +73,17 @@ The original Groq implementation could silently use keyword matching without
 a configured key. Production therefore appeared AI-enabled without establishing
 that a real call had occurred. The correction made mock judging explicitly
 opt-in
-([5b095f4](https://github.com/comp4020-agentic-coding-studio/comp4020-final-yanzzzzzzzz/commit/5b095f4)).
+([0727b36](https://github.com/comp4020-agentic-coding-studio/comp4020-final-yanzzzzzzzz/commit/0727b36)).
 Groq signup problems later motivated Gemini's native REST integration
-([78ac977](https://github.com/comp4020-agentic-coding-studio/comp4020-final-yanzzzzzzzz/commit/78ac977)).
+([785764a](https://github.com/comp4020-agentic-coding-studio/comp4020-final-yanzzzzzzzz/commit/785764a)).
 Deploy success still did not prove authentication: a real request exposed an
 invalid key before valid-key testing was recorded
-([87a2def](https://github.com/comp4020-agentic-coding-studio/comp4020-final-yanzzzzzzzz/commit/87a2def)).
+([4cd70fd](https://github.com/comp4020-agentic-coding-studio/comp4020-final-yanzzzzzzzz/commit/4cd70fd)).
 
 The judge receives the room's server-selected solution, uses separate question
 and final-guess decisions, and exposes fixed reply strings. Prompt changes
 accept paraphrases without dropping essential causal requirements
-([b7e353a](https://github.com/comp4020-agentic-coding-studio/comp4020-final-yanzzzzzzzz/commit/b7e353a)).
+([60af070](https://github.com/comp4020-agentic-coding-studio/comp4020-final-yanzzzzzzzz/commit/60af070)).
 These constraints reduce disclosure and inconsistent presentation; they cannot
 establish semantic correctness for every possible question. Deterministic
 mock tests verify plumbing, not the real model's understanding.
@@ -96,10 +93,10 @@ mock tests verify plumbing, not the real model's understanding.
 The mystery archive styling, cover images and open-dossier creation page aimed
 to communicate the game's mood. The requested book-flip effect was rejected
 after use and removed rather than defended as technical effort
-([a988225](https://github.com/comp4020-agentic-coding-studio/comp4020-final-yanzzzzzzzz/commit/a988225)).
+([482d8bc](https://github.com/comp4020-agentic-coding-studio/comp4020-final-yanzzzzzzzz/commit/482d8bc)).
 Player feedback also changed the transcript into a readable conversation with
 a multiline composer
-([315624e](https://github.com/comp4020-agentic-coding-studio/comp4020-final-yanzzzzzzzz/commit/315624e)).
+([9fbaed9](https://github.com/comp4020-agentic-coding-studio/comp4020-final-yanzzzzzzzz/commit/9fbaed9)).
 
 Claude Code performed implementation while the coordinating assistant supplied
 scoped tasks, reviewed diffs, ran checks and deployed. This arrangement also
@@ -109,7 +106,7 @@ foreground edits and coordinator-run verification restored progress. The
 latest release removed repeated Watson verdicts and the redundant avatar picker,
 fixed profile contrast, simplified About without action buttons, and filtered
 exact obsolete configuration notices
-([feb5408](https://github.com/comp4020-agentic-coding-studio/comp4020-final-yanzzzzzzzz/commit/feb5408)).
+([5f76587](https://github.com/comp4020-agentic-coding-studio/comp4020-final-yanzzzzzzzz/commit/5f76587)).
 
 
 The harness records some corrections as lasting checks rather than instructions
@@ -128,7 +125,7 @@ and the production build. `check:evidence` resolved 50 cited historical commits
 before this condensation; it verifies reference existence, not narrative quality.
 A prior production avatar failure was traced to Fly's internal HTTP scheme
 versus the browser's HTTPS Origin and fixed without accepting arbitrary origins
-([3f2a277](https://github.com/comp4020-agentic-coding-studio/comp4020-final-yanzzzzzzzz/commit/3f2a277)).
+([765a7df](https://github.com/comp4020-agentic-coding-studio/comp4020-final-yanzzzzzzzz/commit/765a7df)).
 The latest release backed up SQLite successfully, deployed, and passed HTTPS
 avatar upload/removal, draft retention, cross-origin rejection and eight-cover
 availability checks. No real-model calls were made in that release check.
@@ -140,18 +137,25 @@ AI-assisted condensation of the preserved
 claim of independently conducted user research. The COMP8020 research note
 is separate; its literature argument is not interchangeable with this record.
 
-## Final document revision
+## Final revision and release evidence
 
-At the author's request, the coordinating assistant directly condensed this
-overview and README rather than routing those edits through Claude Code.
-The unabridged process log remains archived. A separate AI-assisted COMP8020
-research-note draft compares benchmark evaluation, developer productivity and
-agent harness guidance; its claims require author review. Evidence checks
-and both README publication invariants passed after this revision. This
-editing step does not establish original authorship or replace that review.
+The coordinating assistant directly condensed these documents at the author's
+request. Original process narration is archived; the COMP8020 note remains
+a separate literature argument requiring author review.
 
-### Room lifecycle and layout revision
+[7447824](https://github.com/comp4020-agentic-coding-studio/comp4020-final-yanzzzzzzzz/commit/7447824)
+adds host-confirmed unsolved closure through an additive closed_at column,
+reconnect snapshots and the chat-first case-file layout. New unknown-detail
+replies use Irrelevant, while historical replies remain recognized. The 205
+tests, typecheck and build passed; browser checks verified mobile folding and
+no horizontal overflow. A separate-session HTTPS check verified host-only
+closure, retained history, unsolved status and lobby removal. Backup
+`/data/app-before-community-1793278362314.db` passed integrity checking.
 
-[74478240e1c9801481db84f50b677dc1b98bc5bb](https://github.com/comp4020-agentic-coding-studio/comp4020-final-yanzzzzzzzz/commit/74478240e1c9801481db84f50b677dc1b98bc5bb) adds host-confirmed unsolved closure using an additive closed_at field rather than rebuilding the status constraint. A reconnect snapshot restores missed terminal changes. The room now gives chat priority beside a compact, paragraph-preserving case file. Unknown detail decisions display Irrelevant; historical replies remain recognizable. Validation passed 205 tests, typecheck and build. Browser checks confirmed mobile folding, no horizontal overflow and retained history after host closure. Initial failures exposed cached database handles and SSE event-order assumptions; layout review also corrected percentage-grid overflow and native details behaviour. These lessons now enter CLAUDE.md.
-
-Deployment verification for [7447824](https://github.com/comp4020-agentic-coding-studio/comp4020-final-yanzzzzzzzz/commit/7447824): backup `/data/app-before-community-1793278362314.db` passed integrity checking (8 rooms, 42 entries before the synthetic test). The updated machine passed Fly health checks. A fresh HTTPS room with separate host/viewer cookies confirmed non-host rejection, a live closure event, retained transcript, no solved credit and removal from the lobby. The test room is `MLBSY` and remains closed; no real AI request was made. Browser review confirmed the deployed case-file/conversation layout; local 390px testing confirmed collapsed case details and no horizontal overflow. DNS verification was still waiting after the application itself was healthy and responding.
+Submission auditing then caught CI evidence failures after an authorized
+history rewrite changed earlier commit identifiers. Local retained objects
+had hidden broken citations. References were mapped to matching current
+commits; future evidence verification must use a fresh reachable-history
+clone, rather than treating local object existence as sufficient. The checker
+was not weakened. This correction and browser acceptance evidence belong to
+the final handover record.
