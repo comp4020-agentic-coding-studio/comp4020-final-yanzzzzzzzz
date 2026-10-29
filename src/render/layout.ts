@@ -1,12 +1,16 @@
 import type { Profile } from "../db.ts";
 import { escapeHtml } from "./html.ts";
 import { asset } from "./asset.ts";
+import { isLegacyEmojiAvatar } from "../avatar-options.ts";
 
 function identityLink(profile?: Profile): string {
   if (!profile?.nickname) {
     return `<a href="/profile" class="profile-link">Set a nickname</a>`;
   }
-  const avatar = profile.avatar ? `${escapeHtml(profile.avatar)} ` : "";
+  // Only a legacy emoji avatar is ever shown as a text prefix here — an
+  // image-preset id is an internal key, not display text (same reasoning as
+  // src/db.ts's displayLabel()/hostLabel()).
+  const avatar = isLegacyEmojiAvatar(profile.avatar) ? `${escapeHtml(profile.avatar)} ` : "";
   return `<a href="/profile" class="profile-link">${avatar}${escapeHtml(profile.nickname)}</a>`;
 }
 

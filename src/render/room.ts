@@ -6,6 +6,7 @@ import { asset } from "./asset.ts";
 import { coverFor } from "./covers.ts";
 import { QUESTION_MAX_LENGTH } from "../limits.ts";
 import { JUDGE_DISPLAY_NAME, JUDGE_REPLY_TEXTS } from "../llm.ts";
+import { entryAvatarUrl, WATSON_AVATAR } from "./avatars.ts";
 
 const VERDICT_LABEL: Record<string, string> = {
   yes: "Yes",
@@ -33,7 +34,10 @@ function memberRowHtml(member: Member, room: Room, viewerIsHost: boolean): strin
           <button type="submit" class="transfer-host-button">Make host</button>
         </form>`
       : "";
-  return `<li>${crown}${escapeHtml(member.label)}${transferButton}</li>`;
+  const avatarImg = member.avatarUrl
+    ? `<img src="${escapeHtml(member.avatarUrl)}" alt="" width="20" height="20" class="avatar-chip" /> `
+    : "";
+  return `<li>${avatarImg}${crown}${escapeHtml(member.label)}${transferButton}</li>`;
 }
 
 function membersHtml(members: Member[], room: Room, viewerIsHost: boolean): string {
@@ -99,7 +103,9 @@ function waitingHtml(room: Room, isHost: boolean): string {
 // what's stored, broadcast, or asserted on verdict value.
 function systemEntryHtml(entry: QaEntry): string {
   const isJudgeReply = JUDGE_REPLY_TEXTS.has(entry.body);
-  const label = isJudgeReply ? `<span class="entry-label">🤖 ${escapeHtml(JUDGE_DISPLAY_NAME)}</span> ` : "";
+  const label = isJudgeReply
+    ? `<img src="${escapeHtml(WATSON_AVATAR)}" alt="" width="20" height="20" class="avatar-chip" /> <span class="entry-label">${escapeHtml(JUDGE_DISPLAY_NAME)}</span> `
+    : "";
   return `<li class="entry entry-system${isJudgeReply ? " entry-judge-reply" : ""}" data-id="${entry.id}">${label}${escapeHtml(entry.body)}</li>`;
 }
 
@@ -116,8 +122,21 @@ function entryHtml(entry: QaEntry, viewerSessionId: string): string {
   const verdictLabel = entry.verdict ? (VERDICT_LABEL[entry.verdict] ?? entry.verdict) : "…";
   const own = entry.session_id !== null && entry.session_id === viewerSessionId;
   const sideClass = own ? " entry-own" : " entry-other";
+  // Resolved from the ENTRY'S OWN author (entry.session_id), never the
+  // viewer — entryAvatarUrl() returns null only for a system/judge row,
+  // which never reaches this branch (handled above), so a real
+  // question/guess entry always has a session_id here.
+  const avatarUrl = entry.session_id ? entryAvatarUrl(entry) : null;
+  // data-author-session-id lets public/client.js retarget this <img> live if
+  // that session changes its avatar while this transcript is already on
+  // screen (see sse.ts's updateAvatarForSession()) — never read as an
+  // identity/trust signal, purely a DOM hook.
+  const avatarImg = avatarUrl
+    ? `<img src="${escapeHtml(avatarUrl)}" alt="" width="24" height="24" class="avatar-chip" data-author-session-id="${escapeHtml(entry.session_id ?? "")}" />`
+    : "";
   return `<li class="entry entry-${entry.kind}${sideClass}" data-id="${entry.id}">
     <p class="entry-meta">
+      ${avatarImg}
       <span class="entry-label">${escapeHtml(entry.label ? formatAutoLabel(entry.label) : "Mystery Detective")}</span>
       <span class="entry-kind-badge">${KIND_BADGE[entry.kind]}</span>
     </p>

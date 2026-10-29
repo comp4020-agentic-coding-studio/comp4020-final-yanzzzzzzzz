@@ -23,6 +23,11 @@ const MAX_FILE_BYTES = 2 * 1024 * 1024; // 2 MiB, per-file
 const MAX_INPUT_PIXELS = 16_000_000;
 const OUTPUT_MAX_DIMENSION = 1600;
 const OUTPUT_DIR = `${DATA_DIR}/uploads/covers`;
+const AVATAR_OUTPUT_DIR = `${DATA_DIR}/uploads/avatars`;
+// A profile avatar is always shown small and round (member list chip,
+// transcript row) — 256px is plenty of resolution for that, well short of
+// OUTPUT_MAX_DIMENSION's 1600px covers need for a full-width case card.
+const AVATAR_OUTPUT_DIMENSION = 256;
 
 export type CoverRejectionReason =
   | "too-large"
@@ -54,6 +59,22 @@ const REJECTIONS: Record<CoverRejectionReason, string> = {
 
 export function coverRejectionMessage(reason: CoverRejectionReason): string {
   return REJECTIONS[reason];
+}
+
+// Same reasons as a cover rejection (too-large/unsupported-format/corrupt/
+// pixel-limit — processAvatarUpload() shares processCoverUpload()'s exact
+// validation core) but worded for an avatar image specifically, so the
+// profile page's notice never says "cover image" about an avatar upload.
+const AVATAR_REJECTIONS: Record<CoverRejectionReason, string> = {
+  "too-large": "That avatar image is too large — the limit is 2 MiB.",
+  "unsupported-format":
+    "That avatar image's format isn't supported — use JPEG, PNG, or WebP.",
+  corrupt: "That avatar image couldn't be read — the file may be corrupt.",
+  "pixel-limit": "That avatar image's resolution is too high to process.",
+};
+
+export function avatarRejectionMessage(reason: CoverRejectionReason): string {
+  return AVATAR_REJECTIONS[reason];
 }
 
 // Validates, decodes, resizes, and re-encodes an uploaded cover to WebP,
@@ -92,16 +113,31 @@ export async function processCoverUpload(file: File): Promise<CoverAccepted | Co
     return { ok: false, reason: "unsupported-format", message: REJECTIONS["unsupported-format"] };
   }
 
-  const outputBytes = await image
-    .rotate() // applies and then strips any EXIF orientation tag
-    .resize({
-      width: OUTPUT_MAX_DIMENSION,
-      height: OUTPUT_MAX_DIMENSION,
-      fit: "inside",
-      withoutEnlargement: true,
-    })
-    .webp({ quality: 82 })
-    .toBuffer();
+  // A SEPARATE try/catch from the metadata() probe above: sharp's
+  // metadata() only reads the file's header, so a file with a valid header
+  // but truncated/corrupted pixel data (reproduced with a real JPEG cut to
+  // 70-90% of its original length) passes the check above and then throws
+  // HERE, during the actual pixel decode — an error this function used to
+  // let escape uncaught as a 500, instead of the "corrupt" rejection a
+  // truncated upload should produce. Scoped to exactly the decode/resize/
+  // re-encode call, not wrapped around writeFile() below, so a real disk
+  // I/O failure after a successful decode is never miscategorized as a
+  // corrupt image.
+  let outputBytes: Buffer;
+  try {
+    outputBytes = await image
+      .rotate() // applies and then strips any EXIF orientation tag
+      .resize({
+        width: OUTPUT_MAX_DIMENSION,
+        height: OUTPUT_MAX_DIMENSION,
+        fit: "inside",
+        withoutEnlargement: true,
+      })
+      .webp({ quality: 82 })
+      .toBuffer();
+  } catch {
+    return { ok: false, reason: "corrupt", message: REJECTIONS.corrupt };
+  }
 
   mkdirSync(OUTPUT_DIR, { recursive: true });
   const coverPath = `${randomUUID()}.webp`;
@@ -115,16 +151,19 @@ export async function processCoverUpload(file: File): Promise<CoverAccepted | Co
 // data, so this stays cheap even for a file whose header claims a huge
 // image. The real accept/reject pass above never relaxes its own limit;
 // this only exists to make the error message accurate.
-async function classifyDecodeFailure(bytes: Uint8Array): Promise<CoverRejection> {
+async function classifyDecodeFailure(
+  bytes: Uint8Array,
+  messages: Record<CoverRejectionReason, string> = REJECTIONS,
+): Promise<CoverRejection> {
   try {
     const meta = await sharp(bytes, { limitInputPixels: false, failOn: "none" }).metadata();
     const pixels = (meta.width ?? 0) * (meta.height ?? 0);
     if (pixels > MAX_INPUT_PIXELS) {
-      return { ok: false, reason: "pixel-limit", message: REJECTIONS["pixel-limit"] };
+      return { ok: false, reason: "pixel-limit", message: messages["pixel-limit"] };
     }
-    return { ok: false, reason: "corrupt", message: REJECTIONS.corrupt };
+    return { ok: false, reason: "corrupt", message: messages.corrupt };
   } catch {
-    return { ok: false, reason: "corrupt", message: REJECTIONS.corrupt };
+    return { ok: false, reason: "corrupt", message: messages.corrupt };
   }
 }
 
@@ -144,4 +183,71 @@ export function deleteCover(coverPath: string): void {
 
 export function coverFilePath(coverPath: string): string {
   return `${OUTPUT_DIR}/${coverPath}`;
+}
+
+// Same validation core as processCoverUpload() (size cap, real sharp decode
+// against the same allowed-format/pixel-limit rules, EXIF/ICC stripped by
+// re-encoding rather than copying input bytes) — only the output shape
+// differs: a profile avatar is always a fixed 256x256 square, center-cropped
+// (fit: "cover") rather than "fit: inside" with the original aspect ratio,
+// since every place this renders (member-list chip, transcript row) expects
+// one consistent square it can clip to a circle with CSS, not an arbitrary
+// rectangle. Written under its own AVATAR_OUTPUT_DIR with a fresh random
+// filename, same path-traversal-proof reasoning as covers: the uploader's
+// own filename is never used for anything.
+export async function processAvatarUpload(file: File): Promise<CoverAccepted | CoverRejection> {
+  if (file.size > MAX_FILE_BYTES) {
+    return { ok: false, reason: "too-large", message: AVATAR_REJECTIONS["too-large"] };
+  }
+
+  const bytes = new Uint8Array(await file.arrayBuffer());
+
+  let image;
+  let metadata;
+  try {
+    image = sharp(bytes, { limitInputPixels: MAX_INPUT_PIXELS, failOn: "error" });
+    metadata = await image.metadata();
+  } catch {
+    return await classifyDecodeFailure(bytes, AVATAR_REJECTIONS);
+  }
+
+  if (!metadata.format || !ALLOWED_INPUT_FORMATS.has(metadata.format)) {
+    return { ok: false, reason: "unsupported-format", message: AVATAR_REJECTIONS["unsupported-format"] };
+  }
+
+  // Same separate decode/re-encode try/catch as processCoverUpload(), same
+  // reason: metadata() above only validated the header, not the actual
+  // pixel data — a truncated/corrupted file with a valid header throws HERE,
+  // during toBuffer()'s real decode, not during metadata().
+  let outputBytes: Buffer;
+  try {
+    outputBytes = await image
+      .rotate()
+      .resize({
+        width: AVATAR_OUTPUT_DIMENSION,
+        height: AVATAR_OUTPUT_DIMENSION,
+        fit: "cover",
+      })
+      .webp({ quality: 82 })
+      .toBuffer();
+  } catch {
+    return { ok: false, reason: "corrupt", message: AVATAR_REJECTIONS.corrupt };
+  }
+
+  mkdirSync(AVATAR_OUTPUT_DIR, { recursive: true });
+  const avatarPath = `${randomUUID()}.webp`;
+  await writeFile(`${AVATAR_OUTPUT_DIR}/${avatarPath}`, outputBytes);
+  return { ok: true, coverPath: avatarPath };
+}
+
+export function deleteAvatarImage(avatarPath: string): void {
+  try {
+    rmSync(`${AVATAR_OUTPUT_DIR}/${avatarPath}`, { force: true });
+  } catch {
+    // best-effort cleanup only, same reasoning as deleteCover()
+  }
+}
+
+export function avatarFilePath(avatarPath: string): string {
+  return `${AVATAR_OUTPUT_DIR}/${avatarPath}`;
 }

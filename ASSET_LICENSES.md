@@ -147,3 +147,75 @@ hand-written content.
   built-in cover. With these five, all eight built-in puzzles now have a
   dedicated cover; `case-archive.webp` remains the fallback solely for
   player-authored shared puzzles with no uploaded cover of their own.
+
+## Avatar portraits: `public/images/avatars/*.webp`
+
+- **Source**: generated with Codex's built-in `image_gen` tool on
+  2026-10-29, independently (no reference image used for any of the
+  three). Three source PNGs were completed before generation was stopped
+  at the user's explicit request; no further avatar art was generated.
+- **Originality**: same basis as every other AI-generated asset in this
+  file — original fictional character illustrations, not photographs or
+  likenesses of any real person, not sourced from stock/reference
+  imagery, and not claimed under CC0/Creative Commons (none applies to
+  AI-generated output).
+- **Shared prompt prefix**: "Use case: illustration-story. Create one
+  original square profile avatar for a moody mystery deduction website,
+  tightly framed head and shoulders, entire head within central circular
+  safe area, no cropping of hat, centered distinct silhouette. Premium
+  hand-painted editorial character illustration with semi-realistic
+  facial features, elegant detail, clean readable shapes at 40px,
+  expressive warm eyes. Ink navy and teal backdrop, amber rim lighting,
+  muted gold details, attractive welcoming mystery rather than horror.
+  Plain textured background, no scene clutter, no text, no badge, no
+  watermark, no border, no logos, no weapons."
+- **Per-image character prompts**:
+  - `avatar-watson.png`: "Character: Watson, an approachable thoughtful
+    Victorian detective's companion and case host, middle-aged original
+    fictional man, neatly groomed small moustache, warm intelligent
+    expression, brown tweed coat over waistcoat, restrained necktie.
+    Distinctive kind face. No deerstalker, no resemblance to any actor
+    or existing screen portrayal. Warm copper and brass accents."
+  - `avatar-mystery.png`: "Character: an enigmatic gender-neutral young
+    adult detective in an ink-blue coat and dark fedora, softly lit eyes
+    and upper face visible beneath the brim, lower face partly in subtle
+    shadow, curious calm expression, fine brass collar pin. Strong
+    readable silhouette, sophisticated rather than threatening. Teal
+    accents."
+  - `avatar-observer.png`: "Character: an original young adult woman
+    investigator with short dark wavy hair, round thin brass spectacles,
+    cream shirt and dark forest-green coat, thoughtful confident
+    half-smile, warm brown eyes. Warm sage and gold accents, clever and
+    inviting."
+- **Derivative process**: `scripts/process-images.mjs`'s `avatarPresets()`
+  — `sharp(src).resize(256, 256, { fit: "cover" }).webp({ quality: 82 })`
+  — center-cropped square so every render site (a 20–24px member-list/
+  transcript chip, a 96px profile preview) can clip it to a circle with
+  CSS with no visible background bars.
+- **Usage**: `avatar-watson.webp` is Watson's own fixed portrait, shown
+  wherever the judge's reply is labelled "Your Partner, Watson"
+  (src/render/avatars.ts's `WATSON_AVATAR`, never player-selectable).
+  `avatar-mystery.webp` is the default art any session with no chosen
+  avatar falls back to (`DEFAULT_AVATAR`). `avatar-observer.webp` is one
+  additional selectable preset alongside the pre-existing emoji choices
+  (`AVATAR_PRESETS`). A player's own uploaded avatar image (if any) takes
+  priority over all three — see "Player-uploaded avatar images" below.
+
+## Player-uploaded avatar images: `DATA_DIR/uploads/avatars/*.webp`
+
+- **Source**: user-supplied, uploaded through the profile page (routes/
+  profile.ts's `POST /profile/avatar`). Not generated or chosen by this
+  project — whatever JPEG/PNG/WebP a player picks.
+- **Processing**: validated and re-encoded through the same real-decode
+  pipeline as a case cover upload (src/uploads.ts's `processAvatarUpload`)
+  — sharp decodes the actual bytes (never trusting the claimed MIME type
+  or filename extension), strips EXIF/ICC metadata by re-encoding rather
+  than copying input bytes, rejects anything that isn't JPEG/PNG/WebP or
+  exceeds the 2 MiB/16-megapixel limits, and writes a fixed 256×256
+  center-cropped WebP under a fresh random filename — the uploader's own
+  filename is never used for anything, so a path-traversal or malicious
+  filename can't reach the filesystem.
+- **Storage**: under `DATA_DIR/uploads/avatars/`, never committed to this
+  repo (it's runtime, per-deploy, per-player data, not a repo asset) —
+  listed here only so this file's own scope (what ships in the repo vs.
+  what a running deploy's `/data` volume accumulates) stays accurate.

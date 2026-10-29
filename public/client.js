@@ -80,19 +80,30 @@
     return m ? `Mystery Detective #${m[1]}` : label;
   }
 
+  // entry.avatarUrl arrives pre-resolved from the server (src/render/
+  // avatars.ts's entryAvatarUrl(), attached before broadcast() in
+  // src/routes/rooms.ts) — the AUTHOR's own avatar, never derived from
+  // anything client-side, and never the viewer's. Rendered as a plain
+  // escaped <img src>, same trust level as every other server-sourced
+  // string in this file.
+  function avatarImgHtml(url, size) {
+    return url ? `<img src="${escapeHtml(url)}" alt="" width="${size}" height="${size}" class="avatar-chip" /> ` : "";
+  }
+
   function renderEntry(entry) {
     const li = document.createElement("li");
     li.dataset.id = entry.id;
     if (entry.kind === "system") {
       const isJudgeReply = JUDGE_REPLY_TEXTS.has(entry.body);
       li.className = `entry entry-system${isJudgeReply ? " entry-judge-reply" : ""}`;
-      li.innerHTML = `${isJudgeReply ? `<span class="entry-label">🤖 ${escapeHtml(JUDGE_DISPLAY_NAME)}</span> ` : ""}${escapeHtml(entry.body)}`;
+      li.innerHTML = `${isJudgeReply ? `${avatarImgHtml(entry.avatarUrl, 20)}<span class="entry-label">${escapeHtml(JUDGE_DISPLAY_NAME)}</span> ` : ""}${escapeHtml(entry.body)}`;
     } else {
       const verdictLabel = entry.verdict ? VERDICT_LABEL[entry.verdict] ?? entry.verdict : "…";
       const own = entry.session_id != null && entry.session_id === viewerSessionId;
       li.className = `entry entry-${entry.kind} ${own ? "entry-own" : "entry-other"}`;
       li.innerHTML = `
         <p class="entry-meta">
+          ${avatarImgHtml(entry.avatarUrl, 24)}
           <span class="entry-label">${escapeHtml(entry.label ? formatAutoLabel(entry.label) : "Mystery Detective")}</span>
           <span class="entry-kind-badge">${KIND_BADGE[entry.kind]}</span>
         </p>
@@ -141,7 +152,7 @@
             <button type="submit" class="transfer-host-button">Make host</button>
           </form>`
         : "";
-    return `<li>${crown}${escapeHtml(member.label)}${transfer}</li>`;
+    return `<li>${avatarImgHtml(member.avatarUrl, 20)}${crown}${escapeHtml(member.label)}${transfer}</li>`;
   }
 
   function renderPresence({ online, members }) {
@@ -222,6 +233,19 @@
     // now broadcasts a "room-status" event on both actions; reloading here
     // is what actually picks up the new markup.
     source.addEventListener("room-status", handleRoomStatus);
+    // Patches every ALREADY-RENDERED transcript row authored by this
+    // session (src/routes/rooms.ts's broadcastAvatarUpdate(), fired from
+    // routes/profile.ts after an avatar upload/removal/preset change) — the
+    // member list doesn't need this, it's always fully re-rendered by the
+    // "presence" handler above from the live (already-updated) roster.
+    source.addEventListener("avatar-update", (event) => {
+      const { sessionId, avatarUrl } = JSON.parse(event.data);
+      for (const img of transcript.querySelectorAll(
+        `img[data-author-session-id="${CSS.escape(sessionId)}"]`,
+      )) {
+        img.src = avatarUrl;
+      }
+    });
   }
 
   function disconnectRoomStream() {

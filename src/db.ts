@@ -3,6 +3,7 @@ import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import { randomUUID } from "node:crypto";
 import { SEED_PUZZLES } from "./data/puzzles.ts";
+import { isLegacyEmojiAvatar } from "./avatar-options.ts";
 
 // /data is the only thing that survives a restart or redeploy (fly.toml's
 // volume); DATA_DIR lets local dev point somewhere else without touching /data.
@@ -115,6 +116,14 @@ function ensureColumn(table: string, column: string, ddl: string): void {
 ensureColumn("sessions", "nickname", "ALTER TABLE sessions ADD COLUMN nickname TEXT");
 ensureColumn("sessions", "avatar", "ALTER TABLE sessions ADD COLUMN avatar TEXT");
 ensureColumn("sessions", "bio", "ALTER TABLE sessions ADD COLUMN bio TEXT");
+// NULL means "no uploaded avatar" — every existing row (every session from
+// before this column existed) keeps working unchanged through the existing
+// emoji-preset/default-art fallback (src/render/avatars.ts); this column
+// only ever adds a higher-priority option ahead of the existing `avatar`
+// (emoji/preset) column, never replaces it. Stores a server-generated
+// filename under the uploads directory (src/uploads.ts), same pattern as
+// puzzles.cover_path below — never a user-controlled filename.
+ensureColumn("sessions", "avatar_image", "ALTER TABLE sessions ADD COLUMN avatar_image TEXT");
 ensureColumn("puzzles", "title", "ALTER TABLE puzzles ADD COLUMN title TEXT NOT NULL DEFAULT ''");
 ensureColumn(
   "puzzles",
@@ -492,7 +501,10 @@ export function hostLabel(sessionId: string | null): string {
   if (!sessionId) return "Unknown host";
   const profile = getProfile(sessionId);
   if (!profile.nickname) return "Anonymous host";
-  return profile.avatar ? `${profile.avatar} ${profile.nickname}` : profile.nickname;
+  // Only a legacy EMOJI avatar is ever prefixed onto display text — an
+  // image-preset id ("mystery", "observer") is an internal key, not
+  // readable text, and must never render as if it were part of the name.
+  return isLegacyEmojiAvatar(profile.avatar) ? `${profile.avatar} ${profile.nickname}` : profile.nickname;
 }
 
 function randomCode(): string {
@@ -665,15 +677,22 @@ export interface Profile {
   nickname: string | null;
   avatar: string | null;
   bio: string | null;
+  avatarImage: string | null;
 }
 
 export function getProfile(sessionId: string): Profile {
   const row = db
-    .prepare("SELECT nickname, avatar, bio FROM sessions WHERE id = ?")
+    .prepare("SELECT nickname, avatar, bio, avatar_image AS avatarImage FROM sessions WHERE id = ?")
     .get(sessionId) as Profile | undefined;
-  return row ?? { nickname: null, avatar: null, bio: null };
+  return row ?? { nickname: null, avatar: null, bio: null, avatarImage: null };
 }
 
+// Deliberately leaves avatar_image untouched here — an uploaded avatar is
+// set/cleared only by setAvatarImage() below (routes/profile.ts's own
+// upload/remove handlers), never as a side effect of a plain nickname/bio/
+// emoji-preset save. A profile-form submission that fails validation on one
+// field (or simply doesn't touch the avatar section) must never silently
+// wipe an avatar the player already uploaded.
 export function setProfile(
   sessionId: string,
   profile: { nickname: string | null; avatar: string | null; bio: string | null },
@@ -684,6 +703,15 @@ export function setProfile(
     profile.bio,
     sessionId,
   );
+}
+
+// `avatarImage` is a bare server-generated filename (src/uploads.ts) or
+// null to clear it back to the emoji-preset/default fallback — never a
+// user-controlled path. Separate from setProfile() so uploading/removing an
+// avatar image never has to also re-send (and risk re-validating away)
+// nickname/bio/emoji in the same request.
+export function setAvatarImage(sessionId: string, avatarImage: string | null): void {
+  db.prepare("UPDATE sessions SET avatar_image = ? WHERE id = ?").run(avatarImage, sessionId);
 }
 
 export function profileStats(sessionId: string): { participated: number; solved: number } {
@@ -717,7 +745,11 @@ export function displayLabel(roomId: string, sessionId: string): string {
   const profile = getProfile(sessionId);
   const nickname = profile.nickname?.trim();
   if (!nickname) return autoLabel;
-  return profile.avatar ? `${profile.avatar} ${nickname}` : nickname;
+  // Only a legacy EMOJI avatar is ever prefixed onto the nickname text — an
+  // image-preset id is an internal key, never shown as text (its actual
+  // avatar image renders separately via src/render/avatars.ts's
+  // resolveAvatarImage(), not as part of this label string).
+  return isLegacyEmojiAvatar(profile.avatar) ? `${profile.avatar} ${nickname}` : nickname;
 }
 
 export function getTranscript(roomId: string, afterId = 0): QaEntry[] {

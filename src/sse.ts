@@ -1,8 +1,13 @@
 // label/sessionId are who's connected, for channels where that's meaningful
 // (a room); left undefined for channels where it isn't (the sitewide lobby).
+// avatarUrl is resolved once at subscribe time (routes/rooms.ts, from the
+// same session's own profile) — a label/avatar pair can't meaningfully
+// differ across one session's own open tabs, same reasoning the label
+// comment below already documents.
 type Client = {
   label?: string;
   sessionId?: string;
+  avatarUrl?: string;
   write: (chunk: string) => void;
   close: () => void;
 };
@@ -10,6 +15,7 @@ type Client = {
 export interface Member {
   sessionId: string;
   label: string;
+  avatarUrl: string;
 }
 
 // Keyed by channel name: a room id for the room transcript, or a fixed
@@ -72,7 +78,33 @@ export function listMembers(channel: string): Member[] {
   if (!set) return [];
   const bySession = new Map<string, Member>();
   for (const c of set) {
-    if (c.label && c.sessionId) bySession.set(c.sessionId, { sessionId: c.sessionId, label: c.label });
+    if (c.label && c.sessionId) {
+      bySession.set(c.sessionId, { sessionId: c.sessionId, label: c.label, avatarUrl: c.avatarUrl ?? "" });
+    }
   }
   return [...bySession.values()];
+}
+
+// A session's avatar is resolved once at subscribe time (routes/rooms.ts),
+// so changing it on the profile page while that session holds an open room
+// connection would otherwise leave every already-open tab showing the old
+// image until the next full reconnect. Called by routes/profile.ts right
+// after an avatar upload/removal/preset change succeeds — mutates every
+// live Client across every channel for this one session (never another
+// session's), and returns the distinct channel names actually touched so
+// the caller can re-broadcast a presence update (member-list chips) on just
+// those channels, not every channel that exists.
+export function updateAvatarForSession(sessionId: string, avatarUrl: string): string[] {
+  const touched: string[] = [];
+  for (const [channel, set] of channels) {
+    let changed = false;
+    for (const c of set) {
+      if (c.sessionId === sessionId) {
+        c.avatarUrl = avatarUrl;
+        changed = true;
+      }
+    }
+    if (changed) touched.push(channel);
+  }
+  return touched;
 }

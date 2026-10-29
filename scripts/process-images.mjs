@@ -84,5 +84,35 @@ async function stableCovers() {
   }
 }
 
+// Built-in avatar art (src/render/avatars.ts's AVATAR_PRESETS): Watson's own
+// fixed portrait, the default "Mystery" art every session with no chosen
+// avatar falls back to, and one optional extra preset ("Observer") alongside
+// the existing emoji choices. Square, center-cropped (fit: "cover") since
+// every place these render clips to a circle via CSS — a letterboxed square
+// would show visible background bars inside that circle.
+const AVATAR_PRESETS = [
+  { src: "avatar-watson.png", out: "avatar-watson.webp" },
+  { src: "avatar-mystery.png", out: "avatar-mystery.webp" },
+  { src: "avatar-observer.png", out: "avatar-observer.webp" },
+];
+const avatarOutDir = path.resolve("public/images/avatars");
+
+async function avatarPresets() {
+  mkdirSync(avatarOutDir, { recursive: true });
+  for (const { src: srcName, out: outName } of AVATAR_PRESETS) {
+    const src = path.join(srcDir, srcName);
+    if (!existsSync(src)) {
+      console.log(`skip ${srcName} (not present yet)`);
+      continue;
+    }
+    await sharp(src)
+      .resize(256, 256, { fit: "cover" })
+      .webp({ quality: 82 })
+      .toFile(path.join(avatarOutDir, outName));
+    console.log(`wrote avatars/${outName}`);
+  }
+}
+
 await heroDerivatives();
 await stableCovers();
+await avatarPresets();

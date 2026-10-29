@@ -1,6 +1,7 @@
 import type { Profile, StoryReview } from "../db.ts";
 import { layout } from "./layout.ts";
 import { escapeHtml } from "./html.ts";
+import { isLegacyEmojiAvatar } from "../avatar-options.ts";
 
 export interface CommunityPuzzleOption {
   id: string;
@@ -35,7 +36,10 @@ function reviewBodyHtml(review: StoryReview): string {
 }
 
 function reviewCardHtml(review: StoryReview, viewerSessionId: string): string {
-  const avatar = review.reviewerAvatar ? `${escapeHtml(review.reviewerAvatar)} ` : "";
+  // Only a legacy emoji avatar is ever shown as a text prefix — an
+  // image-preset id ("mystery", "observer") is an internal key, never
+  // display text (same reasoning as src/db.ts's displayLabel()/hostLabel()).
+  const avatar = isLegacyEmojiAvatar(review.reviewerAvatar) ? `${escapeHtml(review.reviewerAvatar)} ` : "";
   const mine = review.sessionId === viewerSessionId ? `<span class="review-mine">Your review</span>` : "";
   return `<li class="review-card">
     <p class="review-meta">

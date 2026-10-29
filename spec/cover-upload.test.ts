@@ -187,6 +187,38 @@ it("a corrupt/fake-MIME file is rejected with a clear notice, not a 500 or a sil
   expect(html).toMatch(/couldn't be read/);
 });
 
+// A real, reproduced bug: sharp's metadata() only reads a file's HEADER —
+// it happily succeeds on a JPEG whose pixel data was cut off partway
+// through, since the header (width/height/format) is still intact and
+// readable. The actual pixel decode only happens later, inside
+// resize()/toBuffer() — which, before this fix, ran with no try/catch of
+// its own and let that failure escape as an uncaught 500 instead of the
+// same "corrupt" rejection a fully-unreadable file already gets. Built with
+// a real deterministic pixel pattern (not noise) so sharp's JPEG encoder
+// produces a normal-looking, non-trivial file, then truncated to 70% of its
+// own length — well past the header, partway through real scan data.
+async function makeTruncatedJpeg(ratio: number): Promise<Uint8Array<ArrayBuffer>> {
+  const width = 128;
+  const height = 128;
+  const raw = Buffer.alloc(width * height * 3);
+  for (let i = 0; i < raw.length; i++) raw[i] = (i * 73 + Math.floor(i / 127) * 131) % 256;
+  const full = await sharp(raw, { raw: { width, height, channels: 3 } }).jpeg({ quality: 90 }).toBuffer();
+  return toBlobPart(full.subarray(0, Math.floor(full.length * ratio)));
+}
+
+it("a JPEG with a valid header but truncated pixel data is rejected as corrupt, not a 500", async () => {
+  const title = `Truncated Cover Case ${Date.now()}`;
+  const truncated = await makeTruncatedJpeg(0.7);
+  const { status, location } = await createRoomWithCover({
+    title,
+    cover: { bytes: truncated, filename: "truncated.jpg", type: "image/jpeg" },
+  });
+  expect(status).toBe(303);
+  expect(location).toContain("notice=corrupt");
+  const html = await (await fetch(new URL(location, baseUrl))).text();
+  expect(html).toMatch(/couldn't be read/);
+});
+
 it("an SVG upload is rejected as an unsupported format, never decoded as a cover", async () => {
   const title = `SVG Case ${Date.now()}`;
   const svg = new TextEncoder().encode(

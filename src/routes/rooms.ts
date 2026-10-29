@@ -1,6 +1,6 @@
 import { Hono } from "hono";
-import type { MiddlewareHandler } from "hono";
 import { streamSSE } from "hono/streaming";
+import { multipartBodyLimit } from "../body-limit.ts";
 import {
   canViewPuzzleCover,
   countParticipants,
@@ -36,6 +36,7 @@ import { broadcastLobbyCardChange, LOBBY_CHANNEL } from "./lobby.ts";
 import { isSameOrigin } from "../same-origin.ts";
 import { coverFilePath, coverRejectionMessage, deleteCover, processCoverUpload } from "../uploads.ts";
 import { coverForRoom } from "../render/covers.ts";
+import { avatarForSession, entryAvatarUrl } from "../render/avatars.ts";
 import { readFile } from "node:fs/promises";
 
 const COOLDOWN_MS = 5_000;
@@ -65,70 +66,6 @@ const NOTICES: Record<string, string> = {
 // POST on this app accepts a file.
 const ROOM_CREATE_BODY_LIMIT_BYTES = 3 * 1024 * 1024;
 
-// hono/body-limit's own implementation rejects via the Content-Length
-// header BEFORE reading any of the body — correct for avoiding the cost of
-// buffering an oversized upload, but it leaves however many bytes the
-// client already sent (or is still sending) unread on the socket.
-// Reproduced locally: on a keep-alive connection, those leftover bytes
-// become the start of the NEXT request on the same connection and corrupt
-// it; forcing `Connection: close` instead (tried first) only traded that
-// bug for an EPIPE on the client mid-upload, a worse experience for a real
-// browser tab, not just a test artifact. This drains and discards the
-// stream up to the same limit before responding — the connection stays
-// healthy and reusable, and the client's own request completes normally
-// instead of seeing a broken pipe.
-function roomCreateBodyLimit(): MiddlewareHandler {
-  return async (c, next) => {
-    const contentLength = c.req.header("content-length");
-    if (contentLength && Number(contentLength) <= ROOM_CREATE_BODY_LIMIT_BYTES) {
-      return next();
-    }
-    const body = c.req.raw.body;
-    if (!body) return next();
-
-    // Reading the stream here means the downstream handler's own
-    // c.req.parseBody() can no longer read it directly — when under the
-    // limit, the chunks collected below are replayed into a fresh
-    // ReadableStream and swapped onto c.req.raw before calling next(), the
-    // same pattern hono/body-limit's own "under the limit" path uses, so
-    // parseBody() sees an identical, fully-intact body.
-    //
-    // When OVER the limit, every remaining chunk is still read and
-    // discarded (not just stopped at) — leaving any of the client's bytes
-    // unread on the socket is exactly what corrupted a reused keep-alive
-    // connection before this fix; draining fully is what keeps the
-    // connection healthy for whatever request comes next on it.
-    const chunks: Uint8Array[] = [];
-    let size = 0;
-    let overLimit = false;
-    const reader = body.getReader();
-    for (;;) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      size += value.length;
-      if (size > ROOM_CREATE_BODY_LIMIT_BYTES) {
-        overLimit = true;
-        continue; // keep draining, stop collecting
-      }
-      chunks.push(value);
-    }
-    if (overLimit) {
-      return c.redirect("/rooms/new?mode=author&notice=cover-too-large", 303);
-    }
-
-    c.req.raw = new Request(c.req.raw, {
-      body: new ReadableStream({
-        start(controller) {
-          for (const chunk of chunks) controller.enqueue(chunk);
-          controller.close();
-        },
-      }),
-      duplex: "half",
-    } as RequestInit);
-    return next();
-  };
-}
-
 export const rooms = new Hono();
 
 rooms.get("/rooms/new", (c) => {
@@ -150,7 +87,7 @@ rooms.get("/rooms/new", (c) => {
 
 rooms.post(
   "/rooms",
-  roomCreateBodyLimit(),
+  multipartBodyLimit(ROOM_CREATE_BODY_LIMIT_BYTES, "/rooms/new?mode=author&notice=cover-too-large"),
   async (c) => {
   const sessionId = getOrCreateSessionId(c);
   const body = await c.req.parseBody();
@@ -391,7 +328,7 @@ rooms.post("/rooms/:code/start", (c) => {
       verdict: null,
       label: null,
     });
-    broadcast(room.id, entry.id, entry);
+    broadcast(room.id, entry.id, { ...entry, avatarUrl: entryAvatarUrl(entry) });
     broadcast(
       room.id,
       Date.now(),
@@ -516,7 +453,7 @@ rooms.post("/rooms/:code/ask", async (c) => {
         verdict: null,
         label: null,
       });
-      broadcast(room.id, entry.id, entry);
+      broadcast(room.id, entry.id, { ...entry, avatarUrl: entryAvatarUrl(entry) });
       return c.redirect(`/rooms/${room.code}`, 303);
     }
 
@@ -540,7 +477,7 @@ rooms.post("/rooms/:code/ask", async (c) => {
         verdict: null,
         label: null,
       });
-      broadcast(room.id, entry.id, entry);
+      broadcast(room.id, entry.id, { ...entry, avatarUrl: entryAvatarUrl(entry) });
       return c.redirect(`/rooms/${room.code}`, 303);
     }
 
@@ -553,7 +490,7 @@ rooms.post("/rooms/:code/ask", async (c) => {
         verdict: null,
         label: null,
       });
-      broadcast(room.id, entry.id, entry);
+      broadcast(room.id, entry.id, { ...entry, avatarUrl: entryAvatarUrl(entry) });
       return c.redirect(`/rooms/${room.code}`, 303);
     }
 
@@ -567,7 +504,7 @@ rooms.post("/rooms/:code/ask", async (c) => {
       verdict: verdict.verdict,
       label,
     });
-    broadcast(room.id, questionEntry.id, questionEntry);
+    broadcast(room.id, questionEntry.id, { ...questionEntry, avatarUrl: entryAvatarUrl(questionEntry) });
 
     if (verdict.reply) {
       const replyEntry = insertEntry({
@@ -578,7 +515,7 @@ rooms.post("/rooms/:code/ask", async (c) => {
         verdict: null,
         label: null,
       });
-      broadcast(room.id, replyEntry.id, replyEntry);
+      broadcast(room.id, replyEntry.id, { ...replyEntry, avatarUrl: entryAvatarUrl(replyEntry) });
     }
 
     // Only a correct GUESS ever solves the room — judge()/decisionToVerdict()
@@ -615,6 +552,29 @@ rooms.post("/rooms/:code/heartbeat", async (c) => {
   return c.json({ credited: result.credited });
 });
 
+// Pushes a fresh member roster (with each member's current avatar) to every
+// open connection on one room channel — used both by the room's own SSE
+// route below (on connect/disconnect) and by routes/profile.ts (after an
+// avatar upload/removal/preset change, via sse.ts's updateAvatarForSession(),
+// so an already-open room tab picks up the new avatar without a reload).
+export function broadcastRoomPresence(roomId: string): void {
+  broadcast(roomId, Date.now(), { online: connectionCount(roomId), members: listMembers(roomId) }, "presence");
+}
+
+// Patches every ALREADY-RENDERED transcript entry authored by this session
+// (not just future ones) once its avatar changes — routes/profile.ts calls
+// this (via sse.ts's updateAvatarForSession(), which also mutates the live
+// Client records presence reads from) so a room tab left open through an
+// avatar change doesn't keep showing stale avatars next to that player's
+// earlier messages until a reload. Carries only a session id and the new
+// avatar's public URL — never a nickname, bio, or anything else from the
+// profile — and public/client.js only ever repoints <img> elements it
+// already rendered for that exact session id, never trusts this to
+// introduce a new element or change anything else about an entry.
+export function broadcastAvatarUpdate(roomId: string, sessionId: string, avatarUrl: string): void {
+  broadcast(roomId, Date.now(), { sessionId, avatarUrl }, "avatar-update");
+}
+
 rooms.get("/rooms/:code/stream", (c) => {
   const room = getRoomByCode(c.req.param("code"));
   if (!room) return c.notFound();
@@ -622,15 +582,9 @@ rooms.get("/rooms/:code/stream", (c) => {
   const afterId = Number(c.req.query("after") ?? "0");
   const sessionId = getOrCreateSessionId(c);
   const label = displayLabel(room.id, sessionId);
+  const avatarUrl = avatarForSession(sessionId);
 
-  const broadcastPresence = () => {
-    broadcast(
-      room.id,
-      Date.now(),
-      { online: connectionCount(room.id), members: listMembers(room.id) },
-      "presence",
-    );
-  };
+  const broadcastPresence = () => broadcastRoomPresence(room.id);
 
   return streamSSE(c, async (stream) => {
     // subscribe() BEFORE reading the DB snapshot, not after: an entry
@@ -648,6 +602,7 @@ rooms.get("/rooms/:code/stream", (c) => {
     const unsubscribe = subscribe(room.id, {
       label,
       sessionId,
+      avatarUrl,
       write: (chunk) => {
         if (!closed) stream.write(chunk).catch(() => {});
       },

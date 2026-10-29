@@ -1762,6 +1762,44 @@ textarea:focus-visible {
   border-color: var(--accent);
 }
 
+.avatar-option-image img {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  object-fit: cover;
+  display: block;
+}
+
+.profile-avatar-current {
+  margin: 1rem 0;
+}
+
+.profile-avatar-preview,
+.avatar-chip {
+  border-radius: 50%;
+  object-fit: cover;
+  display: block;
+}
+
+.profile-avatar-preview {
+  width: 96px;
+  height: 96px;
+}
+
+.avatar-chip {
+  width: 1.5rem;
+  height: 1.5rem;
+  vertical-align: middle;
+}
+
+.avatar-upload-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  max-width: 28rem;
+  margin-bottom: 1.25rem;
+}
+
 .profile-stats {
   margin-top: 1.5rem;
   color: var(--fg-dim);
