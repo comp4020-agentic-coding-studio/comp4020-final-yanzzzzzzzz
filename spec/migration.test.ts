@@ -152,6 +152,23 @@ it("keeps every existing room, participant, transcript entry, and authored puzzl
       }
     ).n;
     expect(officialCount).toBe(8);
+
+    // formatAutoLabel(): upgrades a stored HISTORICAL auto-label from before
+    // this app's English-only naming pass (pattern was
+    // "Anonymous Detective#N", seeded above as "sess-real-2"'s stored label)
+    // to the current default's exact text, by exact pattern match only — the
+    // raw stored row (asserted above) stays "Anonymous Detective#2" on disk;
+    // this is purely a rendering-time upgrade.
+    expect(db.formatAutoLabel("Anonymous Detective#2")).toBe("Mystery Detective #2");
+    expect(db.formatAutoLabel("Anonymous Detective#42")).toBe("Mystery Detective #42");
+    // Already-current text passes through unchanged (idempotent).
+    expect(db.formatAutoLabel("Mystery Detective #1")).toBe("Mystery Detective #1");
+    // A custom nickname, even one that merely resembles the pattern, is
+    // never touched — only the exact "Anonymous Detective#<digits>" shape
+    // matches, same stored nickname seeded above.
+    expect(db.formatAutoLabel("🐢 Riko")).toBe("🐢 Riko");
+    expect(db.formatAutoLabel("Anonymous Detective Fanclub")).toBe("Anonymous Detective Fanclub");
+    expect(db.formatAutoLabel("Anonymous Detective#")).toBe("Anonymous Detective#");
   } finally {
     delete process.env.DATA_DIR;
     rmSync(dir, { recursive: true, force: true });

@@ -4,7 +4,7 @@ import { escapeHtml } from "./html.ts";
 
 // A small fixed set rather than free-form upload or URL input: no image
 // hosting, no moderation surface, and it still lets a member-list chip or a
-// transcript line carry a glanceable identity beyond "Anonymous Detective#3".
+// transcript line carry a glanceable identity beyond "Mystery Detective #3".
 export const AVATARS = ["🕵️", "🔍", "🐢", "🔦", "🧩", "🗝️", "📖", "🧠"];
 
 export function profilePage(args: {
@@ -21,7 +21,7 @@ export function profilePage(args: {
       <p>
         No account needed — this is tied to the anonymous session already in
         your browser. Leave the nickname blank to stay
-        "Anonymous Detective#N" in every room.
+        "Mystery Detective #N" in every room.
       </p>
       ${saved ? `<p class="notice" role="status">Saved.</p>` : ""}
 

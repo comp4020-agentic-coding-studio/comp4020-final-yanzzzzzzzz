@@ -53,7 +53,7 @@ function stepsHtml(): string {
     <li>
       ${stepIcon(2)}
       <h3>Ask yes / no / irrelevant questions</h3>
-      <p>The AI judge holds the full solution and answers every question honestly, one at a time.</p>
+      <p>${escapeHtml(JUDGE_DISPLAY_NAME)} holds the full solution and answers every question honestly, one at a time.</p>
     </li>
     <li>
       ${stepIcon(3)}
@@ -71,7 +71,7 @@ function faqHtml(): string {
     ],
     [
       "Is there a single correct answer?",
-      "Yes. Every case has one solution the AI judge holds from the start; a guess is judged against that solution, not against vibes.",
+      `Yes. Every case has one solution ${JUDGE_DISPLAY_NAME} holds from the start; a guess is judged against that solution, not against vibes.`,
     ],
     [
       "Do I need an account?",

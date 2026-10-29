@@ -1,11 +1,11 @@
-import type { Profile, Puzzle, QaEntry, Room } from "../db.ts";
+import { formatAutoLabel, type Profile, type Puzzle, type QaEntry, type Room } from "../db.ts";
 import type { Member } from "../sse.ts";
 import { layout } from "./layout.ts";
 import { escapeHtml } from "./html.ts";
 import { asset } from "./asset.ts";
 import { coverFor } from "./covers.ts";
 import { QUESTION_MAX_LENGTH } from "../limits.ts";
-import { JUDGE_REPLY_TEXTS } from "../llm.ts";
+import { JUDGE_DISPLAY_NAME, JUDGE_REPLY_TEXTS } from "../llm.ts";
 
 const VERDICT_LABEL: Record<string, string> = {
   yes: "Yes",
@@ -94,11 +94,12 @@ function waitingHtml(room: Room, isHost: boolean): string {
 // its own row, by this app's existing design — no pairing column exists, and
 // none is added here). JUDGE_REPLY_TEXTS lets the renderer tell the two
 // apart by exact text match against the fixed sentences src/llm.ts can ever
-// produce, purely to LABEL the row "AI judge" instead of a bare notice —
-// never to change what's stored, broadcast, or asserted on verdict value.
+// produce, purely to LABEL the row with the judge's player-facing display
+// name (JUDGE_DISPLAY_NAME) instead of a bare notice — never to change
+// what's stored, broadcast, or asserted on verdict value.
 function systemEntryHtml(entry: QaEntry): string {
   const isJudgeReply = JUDGE_REPLY_TEXTS.has(entry.body);
-  const label = isJudgeReply ? `<span class="entry-label">🤖 AI judge</span> ` : "";
+  const label = isJudgeReply ? `<span class="entry-label">🤖 ${escapeHtml(JUDGE_DISPLAY_NAME)}</span> ` : "";
   return `<li class="entry entry-system${isJudgeReply ? " entry-judge-reply" : ""}" data-id="${entry.id}">${label}${escapeHtml(entry.body)}</li>`;
 }
 
@@ -117,11 +118,11 @@ function entryHtml(entry: QaEntry, viewerSessionId: string): string {
   const sideClass = own ? " entry-own" : " entry-other";
   return `<li class="entry entry-${entry.kind}${sideClass}" data-id="${entry.id}">
     <p class="entry-meta">
-      <span class="entry-label">${escapeHtml(entry.label ?? "Anonymous Detective")}</span>
+      <span class="entry-label">${escapeHtml(entry.label ? formatAutoLabel(entry.label) : "Mystery Detective")}</span>
       <span class="entry-kind-badge">${KIND_BADGE[entry.kind]}</span>
     </p>
     <p class="entry-question">${escapeHtml(entry.body)}</p>
-    <p class="entry-verdict">AI judge: <strong>${escapeHtml(verdictLabel)}</strong></p>
+    <p class="entry-verdict">${escapeHtml(JUDGE_DISPLAY_NAME)}: <strong>${escapeHtml(verdictLabel)}</strong></p>
   </li>`;
 }
 

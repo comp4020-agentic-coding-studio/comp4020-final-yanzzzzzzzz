@@ -142,12 +142,7 @@ function authorCaseFileHtml(): string {
         <span class="case-file-cover-status" id="cover-status" aria-live="polite">No image selected</span>
       </div>
       <button type="button" id="cover-remove" class="case-file-cover-remove" hidden>Remove image</button>
-      <p class="case-file-cover-hint" id="cover-hint">
-        JPEG, PNG, or WebP, up to 2 MiB. No GIF or SVG. This button and status
-        are our own English UI; the file-picker dialog itself is drawn by
-        your browser/OS and follows its own language, which this page can't
-        override.
-      </p>
+      <p class="case-file-cover-hint" id="cover-hint">JPEG, PNG, or WebP, up to 2 MiB. No GIF or SVG.</p>
       <p class="case-file-source">Your case</p>
       <label for="title" class="case-file-field-label">Case title</label>
       <input type="text" id="title" name="title" maxlength="80" required autocomplete="off" placeholder="The Elevator Routine" class="case-file-title-input" />
@@ -160,7 +155,7 @@ function authorCaseFileHtml(): string {
       <h1 class="case-file-room-heading">Investigation room</h1>
 
       <label for="solution">Solution <span class="case-file-hint">(hidden until solved)</span></label>
-      <textarea id="solution" name="solution" maxlength="2000" required rows="4" placeholder="Explain the full truth, the reason, and any key detail the AI judge needs to tell a correct guess from a close one."></textarea>
+      <textarea id="solution" name="solution" maxlength="2000" required rows="4" placeholder="Explain the full truth, the reason, and any key detail Watson needs to tell a correct guess from a close one."></textarea>
 
       <label class="checkbox-label">
         <input type="checkbox" name="shared" id="shared" />

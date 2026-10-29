@@ -127,6 +127,11 @@ no number borrowed from anywhere else.
 
 ## The AI judge
 
+Shown to players as **"Your Partner, Watson"** (`JUDGE_DISPLAY_NAME` in
+`src/llm.ts`) — a presentation label only; every function/variable name,
+message, and piece of technical behaviour described below is unchanged by
+it.
+
 The judge calls [Gemini](https://ai.google.dev)'s native REST
 `generateContent` endpoint (`gemini-3.5-flash-lite` by default — Google's
 current free-tier, structured-output-capable model; override with

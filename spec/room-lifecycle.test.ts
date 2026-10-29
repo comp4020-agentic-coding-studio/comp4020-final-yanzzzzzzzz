@@ -193,6 +193,51 @@ it("never lets a plain question resolve the room, even when its words match the 
   expect(after).toContain("Yes");
 });
 
+// The judge's player-facing display name (src/llm.ts's JUDGE_DISPLAY_NAME,
+// "Your Partner, Watson") labels only its own fixed-reply rows
+// (JUDGE_REPLY_TEXTS match, src/render/room.ts's systemEntryHtml) — a plain
+// room notice that happens to also be a "system" kind entry (host started
+// the investigation) must never be mislabeled as if Watson said it.
+it("labels a judge reply with Watson's display name, but never a plain room notice", async () => {
+  const create = await fetch(new URL("/rooms", baseUrl), {
+    method: "POST",
+    headers: { "content-type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      mode: "author",
+      title: "Watson Label Case",
+      premise: "A premise for testing.",
+      solution: "A specific unmistakable solution phrase.",
+    }),
+    redirect: "manual",
+  });
+  const code = (create.headers.get("location") ?? "").split("/").pop() ?? "";
+  const cookie = parseCookie(create.headers.getSetCookie());
+  const start = await fetch(new URL(`/rooms/${code}/start`, baseUrl), {
+    method: "POST",
+    headers: { cookie },
+    redirect: "manual",
+  });
+  expect(start.status).toBe(303);
+
+  await fetch(new URL(`/rooms/${code}/ask`, baseUrl), {
+    method: "POST",
+    headers: { cookie, "content-type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({ question: "is it unmistakable", kind: "question" }),
+  });
+
+  const html = await (await fetch(new URL(`/rooms/${code}`, baseUrl), { headers: { cookie } })).text();
+  const entries = [...html.matchAll(/<li class="entry[^>]*>[\s\S]*?<\/li>/g)].map((m) => m[0]);
+
+  const hostNotice = entries.find((e) => e.includes("The host started the investigation."));
+  expect(hostNotice, "the host-start system notice should be in the transcript").toBeTruthy();
+  expect(hostNotice).not.toContain("entry-judge-reply");
+  expect(hostNotice).not.toContain("Your Partner, Watson");
+
+  const judgeReply = entries.find((e) => e.includes("entry-judge-reply"));
+  expect(judgeReply, "a judge-reply row should exist for the question just asked").toBeTruthy();
+  expect(judgeReply).toContain("Your Partner, Watson");
+});
+
 it("only lists a shared authored puzzle for other sessions to pick, not a private one", async () => {
   const sharedTitle = `Shared Case ${Date.now()}`;
   const privateTitle = `Private Case ${Date.now()}`;

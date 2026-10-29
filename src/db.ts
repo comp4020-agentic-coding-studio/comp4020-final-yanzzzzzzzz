@@ -622,16 +622,39 @@ export function ensureSession(sessionId: string): void {
   db.prepare("INSERT OR IGNORE INTO sessions (id) VALUES (?)").run(sessionId);
 }
 
+// The auto-generated label's exact shape as a prior version of this app
+// generated it (brief life as "Anonymous Detective#N", before the
+// English-only naming pass renamed the default to "Mystery Detective #N").
+// Matched ONLY against this exact pattern — a custom nickname can't
+// accidentally collide with it (nicknames aren't numbered like this), so
+// this never touches a real player-chosen name, only the literal old
+// auto-label text already sitting in room_participants/qa_entries rows from
+// before this rename shipped.
+const LEGACY_AUTO_LABEL = /^Anonymous Detective#(\d+)$/;
+
+// Reformats a stored auto-label (old or current shape) to the current
+// default's exact text, preserving the numeric suffix a room's own
+// participant-count numbering already assigned — never re-numbers anyone,
+// never touches a label that isn't this exact auto-generated pattern (a
+// custom nickname passes through unchanged). Exported so both the live path
+// (displayLabel(), below) and the historical-transcript rendering path
+// (src/render/room.ts, public/client.js) upgrade the same literal old text
+// the same way, without rewriting anything already stored on disk.
+export function formatAutoLabel(label: string): string {
+  const m = label.match(LEGACY_AUTO_LABEL);
+  return m ? `Mystery Detective #${m[1]}` : label;
+}
+
 export function ensureParticipantLabel(roomId: string, sessionId: string): string {
   const existing = db
     .prepare("SELECT label FROM room_participants WHERE room_id = ? AND session_id = ?")
     .get(roomId, sessionId) as { label: string } | undefined;
-  if (existing) return existing.label;
+  if (existing) return formatAutoLabel(existing.label);
 
   const { count } = db
     .prepare("SELECT COUNT(*) AS count FROM room_participants WHERE room_id = ?")
     .get(roomId) as { count: number };
-  const label = `Anonymous Detective#${count + 1}`;
+  const label = `Mystery Detective #${count + 1}`;
   db.prepare(
     "INSERT INTO room_participants (room_id, session_id, label) VALUES (?, ?, ?)",
   ).run(roomId, sessionId, label);
@@ -869,7 +892,7 @@ export interface StoryReview {
 
 // A plain profile lookup (same shape as hostLabel()): a review's byline is
 // "whoever this session publicly is," not a room-scoped participant label —
-// reviews aren't tied to any room, so there's no "Anonymous Detective#N" to
+// reviews aren't tied to any room, so there's no "Mystery Detective #N" to
 // fall back to, only a nickname or a generic "Anonymous reviewer."
 function reviewerLabel(sessionId: string): { label: string; avatar: string | null } {
   const profile = getProfile(sessionId);

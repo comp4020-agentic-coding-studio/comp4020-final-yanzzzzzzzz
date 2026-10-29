@@ -2,6 +2,7 @@ import type { Profile } from "../db.ts";
 import { layout } from "./layout.ts";
 import { escapeHtml } from "./html.ts";
 import { coverFor } from "./covers.ts";
+import { JUDGE_DISPLAY_NAME } from "../llm.ts";
 
 export type CaseSource = "all" | "builtin" | "player";
 
@@ -71,7 +72,7 @@ export function casesPage(args: {
       <h1>Case Library</h1>
       <p class="case-browse-blurb">
         Every case currently open to play — the full premise is shown, the
-        solution stays with the AI judge until someone solves it.
+        solution stays with ${escapeHtml(JUDGE_DISPLAY_NAME)} until someone solves it.
       </p>
 
       <form method="get" action="/cases" class="case-search" role="search">

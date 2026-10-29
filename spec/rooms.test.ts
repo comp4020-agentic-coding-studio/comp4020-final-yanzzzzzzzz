@@ -64,13 +64,50 @@ it("distinguishes multiple anonymous sessions in the same room", async () => {
   const { code } = await createRoom();
 
   const { cookie: cookieA, html: htmlA } = await visitRoom(code);
-  expect(htmlA).toContain("Anonymous Detective#1");
+  expect(htmlA).toContain("Mystery Detective #1");
 
   // A request with no cookie at all is a second, distinct anonymous session.
   const { cookie: cookieB, html: htmlB } = await visitRoom(code);
-  expect(htmlB).toContain("Anonymous Detective#2");
+  expect(htmlB).toContain("Mystery Detective #2");
 
   expect(cookieA).not.toBe(cookieB);
+});
+
+// The default auto-label's exact English text and per-room numbering
+// (src/db.ts's ensureParticipantLabel()) — a real user report was the
+// default following the browser's locale via the native file-input chrome
+// elsewhere on the site; this pins the room-identity default itself to a
+// fixed, stable English string, never re-numbered on a later visit from the
+// same session.
+it("keeps the same session's default label stable across repeat visits to the same room", async () => {
+  const { code } = await createRoom();
+  const { cookie, html: first } = await visitRoom(code);
+  expect(first).toContain("Mystery Detective #1");
+
+  const again = await (await fetch(new URL(`/rooms/${code}`, baseUrl), { headers: { cookie } })).text();
+  expect(again).toContain("Mystery Detective #1");
+  expect(again).not.toContain("Mystery Detective #2");
+});
+
+it("a custom nickname is shown instead of the auto-label, and is never itself reformatted", async () => {
+  const { code } = await createRoom();
+  const first = await fetch(new URL("/", baseUrl), { redirect: "manual" });
+  const cookie = parseCookie(first.headers.getSetCookie());
+
+  await fetch(new URL("/profile", baseUrl), {
+    method: "POST",
+    headers: { cookie, "content-type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({ nickname: "Mystery Fanclub", avatar: "" }),
+    redirect: "manual",
+  });
+
+  const html = await (await fetch(new URL(`/rooms/${code}`, baseUrl), { headers: { cookie } })).text();
+  // A nickname that happens to start with "Mystery" (but doesn't match the
+  // exact auto-label pattern "Mystery Detective #N") must render completely
+  // untouched — formatAutoLabel() only ever reformats the exact legacy
+  // auto-generated shape, never a custom nickname that merely looks similar.
+  expect(html).toContain("Mystery Fanclub");
+  expect(html).not.toContain("Mystery Detective #1");
 });
 
 it("broadcasts an asked question to the room's live transcript", async () => {

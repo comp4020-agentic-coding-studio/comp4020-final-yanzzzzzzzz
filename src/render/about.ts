@@ -1,5 +1,6 @@
 import type { Profile } from "../db.ts";
 import { layout } from "./layout.ts";
+import { JUDGE_DISPLAY_NAME } from "../llm.ts";
 
 export function aboutPage(profile?: Profile): string {
   return layout(
@@ -24,8 +25,9 @@ export function aboutPage(profile?: Profile): string {
           <span class="step-icon" aria-hidden="true">❓</span>
           <h3>Ask questions</h3>
           <p>
-            An AI acts as a shared judge when available, answering yes / no /
-            irrelevant questions for the whole room to see.
+            ${JUDGE_DISPLAY_NAME} acts as a shared AI judge when available,
+            answering yes / no / irrelevant questions for the whole room to
+            see.
           </p>
         </li>
         <li>

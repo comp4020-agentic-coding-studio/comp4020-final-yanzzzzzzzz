@@ -53,7 +53,7 @@ function entry(overrides: Partial<QaEntry>): QaEntry {
     kind: "question",
     body: "body",
     verdict: null,
-    label: "Anonymous Detective#1",
+    label: "Mystery Detective #1",
     created_at: "2026-01-01 00:00:00",
     ...overrides,
   };

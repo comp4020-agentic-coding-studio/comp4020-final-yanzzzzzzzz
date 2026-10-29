@@ -92,7 +92,7 @@ it(
 
     const afterTabBJoins = await nextPresence(genTabA);
     expect(afterTabBJoins.online).toBe(1);
-    expect(labelsOf(afterTabBJoins.members)).toEqual(["Anonymous Detective#1"]);
+    expect(labelsOf(afterTabBJoins.members)).toEqual(["Mystery Detective #1"]);
     await nextPresence(genTabB); // tab B's own connect-time broadcast
 
     // Closing one of the two tabs still leaves the session's other tab
@@ -121,7 +121,7 @@ it(
     const genA = sseEvents(resA);
 
     const onA = await nextPresence(genA);
-    expect(labelsOf(onA.members)).toEqual(["Anonymous Detective#1"]);
+    expect(labelsOf(onA.members)).toEqual(["Mystery Detective #1"]);
 
     const controllerB = new AbortController();
     const resB = await fetch(new URL(`/rooms/${code}/stream`, baseUrl), {
@@ -133,14 +133,14 @@ it(
     // B joining broadcasts a fresh roster to every open connection, A included.
     const afterBJoins = await nextPresence(genA);
     expect(labelsOf(afterBJoins.members).sort()).toEqual([
-      "Anonymous Detective#1",
-      "Anonymous Detective#2",
+      "Mystery Detective #1",
+      "Mystery Detective #2",
     ]);
     await nextPresence(genB); // B's own connect-time broadcast, same payload
 
     controllerB.abort();
     const afterBLeaves = await nextPresence(genA);
-    expect(labelsOf(afterBLeaves.members)).toEqual(["Anonymous Detective#1"]);
+    expect(labelsOf(afterBLeaves.members)).toEqual(["Mystery Detective #1"]);
 
     controllerA.abort();
   },

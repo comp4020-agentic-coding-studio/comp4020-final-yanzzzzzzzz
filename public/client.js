@@ -13,13 +13,18 @@
 
   const VERDICT_LABEL = { yes: "Yes", no: "No", irrelevant: "Irrelevant", correct: "✓ Correct!" };
   const KIND_BADGE = { question: "❓ Question", guess: "🎯 Final guess" };
+  // Mirrors src/llm.ts's JUDGE_DISPLAY_NAME — the player-facing name shown
+  // on a judge-reply row and the verdict line. Presentation only: the set
+  // below still matches the judge's actual fixed sentences, unaffected by
+  // the display name shown alongside them.
+  const JUDGE_DISPLAY_NAME = "Your Partner, Watson";
   // Mirrors src/llm.ts's JUDGE_REPLY_TEXTS — the exact fixed sentences the
   // judge can ever hand back as a "system" entry, used the same way the
   // server-rendered page uses it (src/render/room.ts's systemEntryHtml):
-  // purely to LABEL that row "AI judge" instead of a bare notice. Kept as a
-  // literal mirror rather than fetched from the server, same pattern
-  // NOTICE_TEXT below already follows for this file's other server-owned
-  // fixed text.
+  // purely to LABEL that row with JUDGE_DISPLAY_NAME instead of a bare
+  // notice. Kept as a literal mirror rather than fetched from the server,
+  // same pattern NOTICE_TEXT below already follows for this file's other
+  // server-owned fixed text.
   const JUDGE_REPLY_TEXTS = new Set([
     "Yes.",
     "No.",
@@ -65,24 +70,34 @@
     return s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
   }
 
+  // Mirrors src/db.ts's formatAutoLabel() — upgrades a stored historical
+  // "Anonymous Detective#N" label (from before this app's English-only
+  // naming pass renamed the default) to the current "Mystery Detective #N"
+  // text, by exact pattern match only. A custom nickname never matches this
+  // pattern and passes through unchanged.
+  function formatAutoLabel(label) {
+    const m = /^Anonymous Detective#(\d+)$/.exec(label);
+    return m ? `Mystery Detective #${m[1]}` : label;
+  }
+
   function renderEntry(entry) {
     const li = document.createElement("li");
     li.dataset.id = entry.id;
     if (entry.kind === "system") {
       const isJudgeReply = JUDGE_REPLY_TEXTS.has(entry.body);
       li.className = `entry entry-system${isJudgeReply ? " entry-judge-reply" : ""}`;
-      li.innerHTML = `${isJudgeReply ? '<span class="entry-label">🤖 AI judge</span> ' : ""}${escapeHtml(entry.body)}`;
+      li.innerHTML = `${isJudgeReply ? `<span class="entry-label">🤖 ${escapeHtml(JUDGE_DISPLAY_NAME)}</span> ` : ""}${escapeHtml(entry.body)}`;
     } else {
       const verdictLabel = entry.verdict ? VERDICT_LABEL[entry.verdict] ?? entry.verdict : "…";
       const own = entry.session_id != null && entry.session_id === viewerSessionId;
       li.className = `entry entry-${entry.kind} ${own ? "entry-own" : "entry-other"}`;
       li.innerHTML = `
         <p class="entry-meta">
-          <span class="entry-label">${escapeHtml(entry.label ?? "Anonymous Detective")}</span>
+          <span class="entry-label">${escapeHtml(entry.label ? formatAutoLabel(entry.label) : "Mystery Detective")}</span>
           <span class="entry-kind-badge">${KIND_BADGE[entry.kind]}</span>
         </p>
         <p class="entry-question">${escapeHtml(entry.body)}</p>
-        <p class="entry-verdict">AI judge: <strong>${escapeHtml(verdictLabel)}</strong></p>
+        <p class="entry-verdict">${escapeHtml(JUDGE_DISPLAY_NAME)}: <strong>${escapeHtml(verdictLabel)}</strong></p>
       `;
     }
     return li;
@@ -196,7 +211,7 @@
       setConnectionStatus("");
       if (!judgingEl) return;
       const { label } = JSON.parse(event.data);
-      judgingEl.textContent = `⌛ ${label} is waiting on the AI judge…`;
+      judgingEl.textContent = `⌛ ${label} is waiting on ${JUDGE_DISPLAY_NAME}…`;
       judgingEl.hidden = false;
     });
     // A REAL, reproduced bug: starting the room or transferring host never
@@ -354,7 +369,7 @@
     const originalLabel = clicked.textContent;
 
     for (const b of buttons) b.disabled = true;
-    clicked.textContent = kind === "guess" ? "Judge is weighing your guess…" : "AI judge is thinking…";
+    clicked.textContent = kind === "guess" ? "Watson is reviewing your explanation…" : "Watson is thinking…";
 
     try {
       // The server always answers a rejected submission (cooldown,

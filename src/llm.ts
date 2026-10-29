@@ -8,6 +8,14 @@ export interface Verdict {
   reply: string;
 }
 
+// The player-facing name for the judge — a presentation label only, used by
+// src/render/room.ts/public/client.js to style a transcript row and by the
+// waiting/button copy that already existed ("AI judge is thinking…" etc).
+// Nothing downstream of judge()/decisionToVerdict() reads this: the DB
+// verdict enum, JUDGE_FAILURE_MESSAGES' text, and JUDGE_REPLY_TEXTS'
+// classification set are all unchanged by this rename.
+export const JUDGE_DISPLAY_NAME = "Your Partner, Watson";
+
 const GEMINI_API_BASE = "https://generativelanguage.googleapis.com/v1beta/models";
 // gemini-3.5-flash-lite is Google's current free-tier, structured-output-
 // capable model as of this writing (ai.google.dev/gemini-api/docs/models,
