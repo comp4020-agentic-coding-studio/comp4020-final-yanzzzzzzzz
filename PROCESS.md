@@ -149,3 +149,7 @@ research-note draft compares benchmark evaluation, developer productivity and
 agent harness guidance; its claims require author review. Evidence checks
 and both README publication invariants passed after this revision. This
 editing step does not establish original authorship or replace that review.
+
+### Room lifecycle and layout revision
+
+[74478240e1c9801481db84f50b677dc1b98bc5bb](https://github.com/comp4020-agentic-coding-studio/comp4020-final-yanzzzzzzzz/commit/74478240e1c9801481db84f50b677dc1b98bc5bb) adds host-confirmed unsolved closure using an additive closed_at field rather than rebuilding the status constraint. A reconnect snapshot restores missed terminal changes. The room now gives chat priority beside a compact, paragraph-preserving case file. Unknown detail decisions display Irrelevant; historical replies remain recognizable. Validation passed 205 tests, typecheck and build. Browser checks confirmed mobile folding, no horizontal overflow and retained history after host closure. Initial failures exposed cached database handles and SSE event-order assumptions; layout review also corrected percentage-grid overflow and native details behaviour. These lessons now enter CLAUDE.md.

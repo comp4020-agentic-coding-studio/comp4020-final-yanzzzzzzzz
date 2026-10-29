@@ -60,3 +60,9 @@
   by each crit's cutoff, answering the two standing prompts.
 - `README.md` — describes the app as it actually is; it's served verbatim
   at `/readme/`, so it's read there too, not just on GitHub.
+
+## Room completion and responsive state
+- Host-ended cases remain unsolved: retain transcript and premise, do not reveal the solution or credit a solve, and reject subsequent asks/starts/transfers. Ending requires current-host authorization, same-origin checks, explicit confirmation and the same room lock as judging.
+- Persist closure additively; do not rebuild the rooms table solely to add a terminal flag. Room and lobby viewers must recover the current state after reconnect, not only receive broadcasts while online.
+- Native details must use their actual open state; CSS display overrides alone are not a reliable way to expose closed content. Use one responsive case-file structure and preserve keyboard access without JavaScript.
+- A question may confirm a single logically entailed fact without explaining the entire solution. New unknown-detail replies use Irrelevant; historical reply strings remain recognized. Final guesses still require the essential causal explanation.
