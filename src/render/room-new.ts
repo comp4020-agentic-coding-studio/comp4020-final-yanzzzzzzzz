@@ -135,10 +135,19 @@ function authorCaseFileHtml(): string {
       <div class="case-file-cover case-file-cover-author" id="cover-preview" aria-hidden="true">
         <span class="case-file-seal">✎</span>
       </div>
-      <label for="cover" class="case-file-field-label">Cover image (optional)</label>
-      <input type="file" id="cover" name="cover" accept="image/jpeg,image/png,image/webp" />
-      <button type="button" id="cover-remove" class="case-file-cover-remove" hidden>Remove selected image</button>
-      <p class="case-file-cover-hint">JPEG, PNG, or WebP, up to 2 MiB. No GIF or SVG.</p>
+      <span class="case-file-field-label" id="cover-field-heading">Cover image (optional)</span>
+      <div class="case-file-cover-field">
+        <input type="file" id="cover" name="cover" accept="image/jpeg,image/png,image/webp" class="visually-hidden" aria-describedby="cover-status cover-hint" />
+        <label for="cover" class="case-file-cover-choose button-link-outline">Choose image</label>
+        <span class="case-file-cover-status" id="cover-status" aria-live="polite">No image selected</span>
+      </div>
+      <button type="button" id="cover-remove" class="case-file-cover-remove" hidden>Remove image</button>
+      <p class="case-file-cover-hint" id="cover-hint">
+        JPEG, PNG, or WebP, up to 2 MiB. No GIF or SVG. This button and status
+        are our own English UI; the file-picker dialog itself is drawn by
+        your browser/OS and follows its own language, which this page can't
+        override.
+      </p>
       <p class="case-file-source">Your case</p>
       <label for="title" class="case-file-field-label">Case title</label>
       <input type="text" id="title" name="title" maxlength="80" required autocomplete="off" placeholder="The Elevator Routine" class="case-file-title-input" />

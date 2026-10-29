@@ -285,6 +285,79 @@ it("switching modes and back preserves an in-progress author draft (title/premis
   window.close();
 });
 
+// The native <input type="file">'s own rendered chrome ("Choose
+// File"/"No file chosen" or a localized equivalent) follows the browser's
+// locale, not the page's — a site that's otherwise entirely English showed
+// Chinese there on a browser set to zh-CN. The fix hides that native text
+// (CSS only; the input itself stays a real, focusable, labelled control) and
+// replaces it with site-owned, always-English markup: a <label>-as-button
+// reading "Choose image" and a status element whose text create-case.js
+// controls directly.
+it("author mode's cover control is a site-owned English label + status, not the browser-localized file-input chrome", async () => {
+  const html = await (await fetch(new URL("/rooms/new?mode=author", baseUrl))).text();
+  expect(html).toContain('for="cover" class="case-file-cover-choose');
+  expect(html).toContain("Choose image");
+  expect(html).toContain('id="cover-status"');
+  expect(html).toContain("No image selected");
+  // The real input must still be present, named "cover", and still a real
+  // file input — only visually hidden, never removed or disabled.
+  expect(html).toMatch(/<input type="file" id="cover" name="cover"[^>]*class="visually-hidden"/);
+  expect(html).not.toMatch(/<input type="file" id="cover" name="cover"[^>]*disabled/);
+});
+
+it("selecting a cover file updates the English status text to the real filename, and removing it restores 'No image selected'", async () => {
+  const { window } = await loadCreateCaseDom("/rooms/new?mode=author");
+  const coverInput = window.document.getElementById("cover") as HTMLInputElement;
+  const status = window.document.getElementById("cover-status") as HTMLElement;
+  expect(status.textContent).toBe("No image selected");
+
+  const file = new window.File(["fake-image-bytes"], "my-cover-photo.jpg", { type: "image/jpeg" });
+  Object.defineProperty(coverInput, "files", { value: [file], configurable: true });
+  coverInput.dispatchEvent(new window.Event("change", { bubbles: true }));
+  await new Promise((resolve) => setTimeout(resolve, 20));
+  expect(status.textContent).toBe("my-cover-photo.jpg");
+
+  (window.document.getElementById("cover-remove") as HTMLButtonElement).click();
+  await new Promise((resolve) => setTimeout(resolve, 20));
+  expect(status.textContent).toBe("No image selected");
+  expect(window.document.activeElement?.id).toBe("cover");
+  window.close();
+});
+
+// A filename is attacker-controlled (the uploader picks it); the status
+// element must render it as inert text, never interpret it as markup.
+it("a filename containing HTML-looking characters is shown as literal text in the status, never parsed as markup", async () => {
+  const { window } = await loadCreateCaseDom("/rooms/new?mode=author");
+  const coverInput = window.document.getElementById("cover") as HTMLInputElement;
+  const status = window.document.getElementById("cover-status") as HTMLElement;
+  const evilName = `<img src=x onerror=alert(1)>.jpg`;
+  const file = new window.File(["fake-image-bytes"], evilName, { type: "image/jpeg" });
+  Object.defineProperty(coverInput, "files", { value: [file], configurable: true });
+  coverInput.dispatchEvent(new window.Event("change", { bubbles: true }));
+  await new Promise((resolve) => setTimeout(resolve, 20));
+  expect(status.textContent).toBe(evilName);
+  expect(status.querySelector("img")).toBeNull();
+  window.close();
+});
+
+it("switching modes and back preserves the English cover status text alongside the restored file", async () => {
+  const { window } = await loadCreateCaseDom("/rooms/new?mode=author");
+  const coverInput = window.document.getElementById("cover") as HTMLInputElement;
+  const file = new window.File(["fake-image-bytes"], "draft-cover.png", { type: "image/png" });
+  Object.defineProperty(coverInput, "files", { value: [file], configurable: true });
+  coverInput.dispatchEvent(new window.Event("change", { bubbles: true }));
+  await new Promise((resolve) => setTimeout(resolve, 20));
+
+  clickTab(window, "existing");
+  await waitForMode(window, "existing");
+  clickTab(window, "author");
+  await waitForMode(window, "author");
+  await new Promise((resolve) => setTimeout(resolve, 20));
+
+  expect((window.document.getElementById("cover-status") as HTMLElement).textContent).toBe("draft-cover.png");
+  window.close();
+});
+
 it("switching modes and back preserves a chosen cover file as the SAME input node, with its preview restored", async () => {
   const { window } = await loadCreateCaseDom("/rooms/new?mode=author");
   const coverInput = window.document.getElementById("cover") as HTMLInputElement;

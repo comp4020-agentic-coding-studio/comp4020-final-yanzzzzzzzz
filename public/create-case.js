@@ -86,17 +86,36 @@
     sync();
   }
 
+  // The native <input type="file"> itself is kept fully functional (real
+  // tab stop, real label association, real picker) — only its OWN rendered
+  // chrome is hidden via CSS (.visually-hidden), because that chrome is the
+  // one piece of this control the app can't own: Chrome/Firefox/Safari draw
+  // "Choose File"/"No file chosen" (or their translations) in whatever
+  // locale the browser itself is set to, not the page's language, so an
+  // English-only site with a non-English browser showed Chinese text here
+  // even though every other string on the page is English. #cover-status
+  // below is a plain site-owned element updated via textContent (never
+  // innerHTML) with the real filename, so it can't ever render as markup.
+  // The OS-native picker DIALOG that opens on click is unaffected by any of
+  // this — that part is genuinely outside the page's control and still
+  // follows the browser/OS locale; the hint text under the control says so.
   function initCoverUploadPreview(root) {
     const coverInput = root.querySelector("#cover");
     const coverPreview = root.querySelector("#cover-preview");
     const coverRemove = root.querySelector("#cover-remove");
-    if (!coverInput || !coverPreview || !coverRemove) return;
+    const coverStatus = root.querySelector("#cover-status");
+    if (!coverInput || !coverPreview || !coverRemove || !coverStatus) return;
     let objectUrl = null;
+
+    function setStatus(text) {
+      coverStatus.textContent = text;
+    }
 
     function showGlyph() {
       coverPreview.classList.add("case-file-cover-author");
       coverPreview.innerHTML = `<span class="case-file-seal">✎</span>`;
       coverRemove.hidden = true;
+      setStatus("No image selected");
     }
 
     function showPreview(file) {
@@ -105,6 +124,7 @@
       coverPreview.classList.remove("case-file-cover-author");
       coverPreview.innerHTML = `<img src="${objectUrl}" alt="" width="800" height="500" />`;
       coverRemove.hidden = false;
+      setStatus(file.name);
     }
 
     coverInput.addEventListener("change", () => {
@@ -116,6 +136,10 @@
     coverRemove.addEventListener("click", () => {
       coverInput.value = "";
       showGlyph();
+      // The visible "Choose image" affordance is the <label>, but a <label>
+      // isn't a focusable element by default — focus goes to the real
+      // <input type="file"> it's bound to, which IS in the tab order
+      // (visually hidden via CSS only, never removed from the a11y tree).
       coverInput.focus();
     });
 
@@ -124,6 +148,7 @@
     // immediately rather than waiting for a change event that won't fire
     // again for a file that was already chosen before this mode switch.
     if (coverInput.files && coverInput.files[0]) showPreview(coverInput.files[0]);
+    else setStatus("No image selected");
   }
 
   function initPageBehaviors(root) {

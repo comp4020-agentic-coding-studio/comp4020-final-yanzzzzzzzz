@@ -1544,9 +1544,46 @@ textarea:focus-visible {
 /* The cover-upload controls sit directly under the cover preview itself
    (#cover-preview — the same element the sealed/author glyph already
    occupies, just swapped for an <img> once a file is chosen, by
-   create-case.js). Plain default file-input styling: no custom button
-   skin that could lose native keyboard/screen-reader behavior for a
-   feature this small. */
+   create-case.js). The real <input type="file"> stays in the DOM, in the
+   tab order, and wired to its <label> exactly as a plain file input would
+   be — only its own native chrome (the "Choose File"/"No file chosen" text,
+   which follows the browser's locale, not the page's) is visually hidden,
+   replaced by a site-owned English button + status pair that create-case.js
+   keeps in sync. The OS file-picker dialog itself is still native and still
+   follows the browser/OS locale — that part can't be relabeled from here. */
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.case-file-cover-field {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  flex-wrap: wrap;
+}
+
+.case-file-cover-choose {
+  cursor: pointer;
+}
+
+.case-file-cover-field input[type="file"]:focus-visible + .case-file-cover-choose {
+  outline: 3px solid var(--accent-bright);
+  outline-offset: 2px;
+}
+
+.case-file-cover-status {
+  font-size: 0.85rem;
+  color: color-mix(in srgb, var(--paper-ink) 70%, transparent);
+}
+
 .case-file-cover-hint {
   margin: 0 0 0.4rem;
   font-size: 0.8rem;
