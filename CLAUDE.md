@@ -66,3 +66,5 @@
 - Persist closure additively; do not rebuild the rooms table solely to add a terminal flag. Room and lobby viewers must recover the current state after reconnect, not only receive broadcasts while online.
 - Native details must use their actual open state; CSS display overrides alone are not a reliable way to expose closed content. Use one responsive case-file structure and preserve keyboard access without JavaScript.
 - A question may confirm a single logically entailed fact without explaining the entire solution. New unknown-detail replies use Irrelevant; historical reply strings remain recognized. Final guesses still require the essential causal explanation.
+
+- Bounded lobby lists need a deterministic insertion-order tie-break when creation timestamps have only second precision. Test more than twenty rooms sharing exactly one timestamp; never fix missing-new-room failures by enlarging the list or weakening cover assertions.

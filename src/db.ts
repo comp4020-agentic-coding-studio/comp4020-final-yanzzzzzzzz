@@ -573,7 +573,7 @@ export function listActiveRooms(limit = 20): LobbyRoom[] {
        FROM rooms r
        JOIN puzzles p ON p.id = r.puzzle_id
        WHERE r.status IN ('waiting', 'active') AND r.closed_at IS NULL
-       ORDER BY r.created_at DESC
+       ORDER BY r.created_at DESC, r.rowid DESC
        LIMIT ?`,
     )
     .all(limit) as unknown as LobbyRoom[];
