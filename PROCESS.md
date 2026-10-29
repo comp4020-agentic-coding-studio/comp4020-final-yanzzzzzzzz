@@ -2832,3 +2832,30 @@ server (port 8090, throwaway `/data` dir, `ALLOW_MOCK_JUDGE=1`, restarted on
 every source change). `pnpm typecheck`, the full `pnpm test` suite (148
 passed, 0 failed), `pnpm build`, and `pnpm check:evidence` all ran clean
 after this bump.
+
+## Live verification: judge leniency and the new composer, in production
+
+Root ran this against the deployed app after `fc0d9ea` pushed
+(`b7e353a`'s judge prompt, `315624e`'s transcript/composer, `9f6ffff`'s
+cache bump). Room `F6463` ("The Elevator Routine"): a first final guess,
+"He is short.", correctly came back incomplete — on the right track, missing
+the mechanism. A second final guess, submitted verbatim as typed — "short
+guy cant reach 10, only 7, so walks the rest. rainy days hes got an umbrela
+and pokes the 10 button with it." — came back **Correct!**, solving the room
+and revealing the solution. That guess has no capitalization, a dropped
+apostrophe, and two misspellings ("umbrela," and the missing one in "cant"),
+which is exactly the leniency `b7e353a`'s prompt change asked for: informal,
+typo-bearing wording judged on substance, not penalized for not matching the
+solution's own phrasing. Two real Gemini calls validate this one case; it
+isn't proof of universal accuracy, same caveat this file's earlier "what six
+real calls actually prove" entry already carries.
+
+The new 2000-character `<textarea>` and its explicit too-long rejection
+(`315624e`) and the transcript's ownership-based roles held up over SSR and
+the live SSE stream. Local verification before this push: `pnpm test`
+(148 passed) against an isolated server, with a root browser check catching
+and fixing the `<li>`/`<p>` `entry-question` selector collision and the
+sticky-composer transcript overlap ahead of deploy. Cache release
+`20261029-room-conversation-1` confirmed live. Backup before this round:
+`/data/app-before-community-1793246958263.db`, integrity OK, 7 rooms / 29
+entries at backup time. No keys, billing, or model config touched.
