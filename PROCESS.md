@@ -2642,3 +2642,92 @@ pre-existing + 1 new) — including all 14 tests in
 deployed by this session — pushing/deploying it is the next step, to be
 done under the same real-access authorization as the Gemini-migration push
 above, not by this session.
+
+## A valid key, and the Gemini judge's first real verdicts
+
+This entry is documentation-only: no app code changed, no live API call was
+made, no key was read or printed, and nothing was pushed or deployed by this
+session. It records what the account that owns the Fly app and its secrets
+(root) did on 2026-10-29, closing the "deployed key is invalid" gap the
+previous entry left open.
+
+Root re-saved a valid `GEMINI_API_KEY` to Fly via a hidden-input prompt (the
+value itself was never displayed or typed into a visible field this session
+could see). To confirm the save actually took before trusting any room
+test against it, root ran exactly one diagnostic call — a synthetic "Reply
+OK" prompt — directly from the Fly machine using the already-set env var, the
+same minimal-spend-before-trusting-a-fix discipline the `rooms_old` incident
+established earlier in this file. It returned HTTP 200 with a real
+`candidates[0]` entry from `gemini-3.5-flash-lite`, confirming the key
+authenticates and the model name from the original migration is still live.
+No secret value was printed by this call or logged anywhere.
+
+With that confirmed, a real browser session then played room `LLPKT` ("The
+Elevator Routine") — the same room code the previous entry's 401 failure was
+recorded against. That failed transcript entry wasn't deleted or edited; it
+sits in the room's history exactly as it happened, with the real judged
+entries below now arriving after it as the honest record of "it was broken,
+then it was fixed," not a replayed clean run:
+
+- Question: "Is he too short to reach the button for the tenth floor?" →
+  **Yes**.
+- Guess: "He is short." → **"Your explanation is incomplete."**
+- Guess: he can reach every button but the lift is broken above the seventh
+  floor → **"That explanation contradicts the case."** — correctly rejected,
+  not a hallucinated "correct."
+- A longer, more complete guess was typed but got silently clipped by the
+  ask-form's `maxlength="200"` attribute before it reached the sentence
+  stating the umbrella mechanism. The judge's "incomplete" verdict was the
+  *correct* answer to the input it actually received — but the clipping
+  itself is a real usability gap: a player can type a true, complete
+  solution and watch it get rejected for a reason that's an artifact of the
+  input box, not their reasoning. Logged here honestly rather than silently
+  worked around; no code change is in scope for this documentation-only
+  session.
+- Final guess, kept under 200 characters: "He is short, reaching only the
+  7th-floor button, so walks the last three floors. In rain he carries an
+  umbrella and uses it to press 10. The ground-floor button is low enough to
+  reach." → **"Correct!"** — the room flipped to solved, the solution was
+  revealed, and the ask-form was removed, matching `markSolved()`'s existing
+  behavior.
+
+**Scope of what six real calls actually prove.** One diagnostic call plus
+five room judgements (one question, four guesses) is the total real-API
+evidence gathered — enough to confirm the deployed key authenticates, the
+named model responds, `responseSchema` parsing works end to end against a
+live response, and five plausible verdicts came back in a row. It is *not*
+evidence that every case this judge will see is handled correctly, that the
+prompt-injection framing documented in the Gemini-migration entry above holds
+against a real adversarial input, or that the free tier's rate limits are
+generous enough for real play under load — those remain open questions a
+handful of manual calls can't close, consistent with the "implemented and
+mock-tested, real-key verification outstanding" framing the previous entry
+already used; this just narrows the gap rather than closing it.
+
+No change was made to where the key is stored, how it's logged, or to any
+billing configuration — the only state that changed was the secret's value
+on Fly, done by root through the hidden-input flow `flyctl secrets set`
+already supports.
+
+### The cover-upload fix is now live too
+
+Separately, root also pushed and deployed `96c4332` (the empty-file-input
+cover-upload fix from the previous entry, at that point local-only). Before
+deploying, `/data` was backed up to
+`/data/app-before-community-1793235369980.db`; its integrity was checked and
+it held 5 rooms / 14 entries at backup time. A real Chromium test then
+exercised the exact scenario `96c4332` fixes — "Write your own" with no
+cover image chosen — against the live site, and it succeeded: room `CK7FY`
+was created (not shared) with the archive's fallback cover image, not a
+`notice=corrupt` rejection. This confirms the fix holds against a real
+browser's multipart encoding in production, not only the isolated test
+suite's hand-built request from before.
+
+Commits already on `origin/main` covering this work, for anyone verifying
+against hashes: the Gemini judge and room lock
+([`78ac977`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-yanzzzzzzzz/commit/78ac977)),
+the empty-cover-upload fix
+([`96c4332`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-yanzzzzzzzz/commit/96c4332)),
+and the previous entry recording the push and the then-401 key
+([`d709b2c`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-yanzzzzzzzz/commit/d709b2c)).
+This session added no new code commit — only this PROCESS.md entry.
