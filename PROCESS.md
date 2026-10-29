@@ -3156,3 +3156,11 @@ This entry records what actually ran and passed (the smoke test's real
 status codes and the real browser check's real observations) — it is not
 a claim about the AI judge's semantic correctness, which this round of
 testing didn't touch and isn't what was being verified here.
+
+### 2026-10-29 — conversation and profile clarity
+
+- Change: feb5408ec56d8e5c5d33ed06564921484c5003c4. Removed duplicate inline Watson verdicts while retaining a standalone historical fallback when a judge reply row is absent. Preserved author-owned avatars and real-time message rendering.
+- Consolidated profile avatar preview/upload/removal, removed the redundant visible emoji picker while preserving stored avatar settings, and replaced paper-ink styles on the dark profile page with dedicated readable styles. Simplified About into three steps, content warning and music credit, with no start/browse CTA as requested.
+- Exact legacy GROQ/GEMINI missing-key transcript notices are hidden in SSR and SSE backfill without deleting database history; current unavailability uses friendly wording. Unrelated timeout/rate-limit messages remain visible.
+- Validation: typecheck, all 194 tests across 24 files, and production build passed against isolated mock server8098. No real AI requests or new image generation. Earlier verification caught a template-comment backtick syntax error and outdated UI assertions; these were corrected before committing.
+- Claude initially stalled on broad investigation and background permissions; scope was narrowed to direct edits and root ran validation. Deployment and live verification are recorded separately after completion.
