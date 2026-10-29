@@ -2859,3 +2859,98 @@ sticky-composer transcript overlap ahead of deploy. Cache release
 `20261029-room-conversation-1` confirmed live. Backup before this round:
 `/data/app-before-community-1793246958263.db`, integrity OK, 7 rooms / 29
 entries at backup time. No keys, billing, or model config touched.
+
+## Cover-upload English UI, five more case covers, lobby thumbnails, the default-name/Watson rename, and profile avatars
+
+A user report started this run: the author-mode cover-upload control
+showed Chinese ("选择文件"/"未选择任何文件") on a non-English browser,
+because that text is the native `<input type="file">`'s own rendering,
+which follows the browser/OS locale, never the page's language. Fixed in
+[`b3734d0`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-yanzzzzzzzz/commit/b3734d0f3034fb70af57601aaf5301aa5bf30df2):
+the real file input stays fully functional (same name, same multipart
+encoding, same accept list, still a real focusable labelled control) but
+its own native chrome is hidden via CSS only, replaced with a site-owned
+`<label>`-as-button ("Choose image") and a status element
+(`public/create-case.js`) updated via `textContent` — never `innerHTML`,
+so an attacker-chosen filename can't inject markup. Root's own real-browser
+check confirmed: Choose image → `case-shoes.png` selected, switching to
+"Choose a case" and back preserved the filename/status, Remove image
+restored "No image selected." The OS picker dialog itself still can't be
+relabeled from the page — that limitation is documented, not papered over.
+
+Five of the eight built-in puzzles had no dedicated cover and fell back to
+the shared archive photo — generated with Codex's `image_gen` tool
+(prompts and provenance in `ASSET_LICENSES.md`), each inspected for
+landscape framing, no text/logo/watermark, and no detail that spoils the
+puzzle's own solution, in
+[`0d70187`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-yanzzzzzzzz/commit/0d7018765f26bf18e49995a24f3936eb6acc5474).
+All eight built-ins now have a unique dedicated cover; the archive photo
+is reachable only by a player-authored puzzle with no uploaded cover.
+
+The homepage/lobby's "open cases" room cards showed title/status/code/
+host/players but no image, in
+[`bff10d2`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-yanzzzzzzzz/commit/bff10d27ecf896a9ea4abb23f22e75554ae442b7).
+The one real design decision: a room playing a PRIVATE (unshared)
+authored puzzle is still legitimately listed in the lobby, but the
+existing `GET /uploads/cover/:puzzleId` route deliberately refuses anyone
+who hasn't joined that room yet. Rather than loosen that check for every
+caller, lobby cards resolve through a narrower, room-code-scoped
+`GET /rooms/:code/cover` that only serves the image (never
+title/premise/solution beyond what the card already shows) and only
+while the room is actually listed — once solved, the same URL 404s.
+
+Two renames landed in
+[`040eb59`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-yanzzzzzzzz/commit/040eb59146bed393cf434e4d9c48502a345b75e0):
+the default anonymous label is now "Mystery Detective #N" (was "Anonymous
+Detective#N"), and the AI judge is shown to players as "Your Partner,
+Watson" (`JUDGE_DISPLAY_NAME`, `src/llm.ts`) — presentation only, no
+change to judge logic, the model, the DB verdict enum, or any fixed
+message's underlying text. A historical label already on disk (the old
+shape) upgrades to the new text at RENDER time only
+(`formatAutoLabel()`), never rewritten in the database — confirmed by
+`spec/migration.test.ts`'s fixture, which still asserts the raw stored
+value is the old text. **Self-caught process note**: commit `bff10d2`'s
+`src/render/home.ts` already imported `JUDGE_DISPLAY_NAME` in
+anticipation of this rename, but that commit's own `src/llm.ts` didn't
+yet export it — an intermediate commit that doesn't build standalone,
+caught on review before `040eb59` landed. Fixed forward (the export
+ships in `040eb59`) rather than rewritten, since `bff10d2` was already on
+`main`; the working tree was green at every commit boundary from
+`040eb59` onward.
+
+Finally, profile avatar upload shipped in
+[`7c4bb13`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-yanzzzzzzzz/commit/7c4bb134cc1ec357b39622c4a12c940f44118397):
+a custom image (JPEG/PNG/WebP ≤2 MiB, real sharp decode, center-cropped
+to a fixed 256×256 WebP) takes priority over a selected emoji/AI-art
+preset, which takes priority over the default art — one resolver
+(`src/render/avatars.ts`) used everywhere a player's identity already
+renders (room transcript SSR+SSE, live member list, profile preview).
+Three more AI-generated portraits back Watson's own fixed portrait, the
+default fallback, and one extra preset; **image generation is stopped**
+per instruction — no further art was generated or requested. Root caught
+three real issues on review before this landed, all fixed in the same
+commit: (1) an image-preset id ("mystery", "observer") was being
+prefixed onto a nickname as if it were an emoji, showing e.g. "observer
+Yan" — only a legacy emoji is ever shown as text now, centralized in a
+dependency-free `src/avatar-options.ts` so `src/db.ts` can check it
+without an import cycle; (2) a real decode bug, root-reproduced with a
+genuine JPEG truncated to 70–90% of its own length: sharp's `metadata()`
+only reads the file header, so a truncated file passed that check and
+then threw, UNCAUGHT, inside the later `resize()`/`toBuffer()` call — a
+500 instead of the existing "corrupt" rejection. Fixed with its own
+decode-scoped `try`/`catch` in both `processCoverUpload()` and
+`processAvatarUpload()`, narrow enough that a real disk I/O failure after
+a successful decode is never miscategorized as corrupt; (3) `/profile`,
+`/profile/avatar`, and `/profile/avatar/remove` now reject a cross-origin
+POST, matching the room heartbeat and community-review routes' existing
+guard.
+
+Verified throughout this run: `pnpm typecheck` and the full `pnpm test`
+suite (172 tests passing by the final commit) against isolated local
+servers on ports 8091–8093 — never the root dev server — each with its
+own throwaway `DATA_DIR` and `ALLOW_MOCK_JUDGE=1`, restarted after every
+source change via a small `node` wrapper script so `APP_URL` could be set
+without relying on inline env-var shell syntax. No push, deploy, API
+call, secret read, or history rewrite happened in this session; root
+reviewed the real browser behavior (the cover chooser, the lobby grid,
+the avatar upload) separately and will push/deploy once satisfied.
