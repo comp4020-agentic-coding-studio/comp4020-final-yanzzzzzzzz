@@ -2985,3 +2985,55 @@ real-browser avatar-chooser-and-successful-upload check is the actual
 proof this fix addresses; root will push and deploy once satisfied with
 that verification. Still no push, deploy, API call, secret read, or
 history rewrite from this session.
+
+### Second follow-up: a live-delivered message's avatar never repointed
+
+Root's real-browser QA went further: two independent origins
+(`http://127.0.0.1:8094` and `http://localhost:8094`, two distinct
+sessions by design) joined the same room, each posted a question — each
+message correctly showed a custom-uploaded/default/Watson avatar as
+appropriate. One session then clicked "Remove uploaded avatar." The live
+member list updated, but that session's ALREADY-RENDERED message kept
+showing the old avatar even after waiting. Root's own DOM read-only
+inspection (`#transcript img` → `getAttribute("data-author-session-id")`
+→ `null`, every time) found the exact cause.
+
+`public/client.js`'s `avatarImgHtml()` — the function rendering a message
+delivered LIVE over SSE — never wrote the `data-author-session-id`
+attribute the `"avatar-update"` listener queries for. `src/render/room.ts`'s
+server-rendered version did write it; only the live-render path was
+missing it, so a message already on the page at load time repainted
+correctly, but one delivered afterward through `appendEntry()` never did,
+no matter how many `avatar-update` events arrived.
+
+Fixed in
+[`a1c6a1b`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-yanzzzzzzzz/commit/a1c6a1be4e1cc0f9c843ea1c42dec1ad7dd5f8c3):
+`avatarImgHtml()` now takes an optional `authorSessionId`, wired only for
+a player's own question/guess entry — never Watson's judge-reply chip (no
+session to re-target) or the member-list chip (always fully re-rendered
+from a fresh roster, never patched in place). Bumped the asset `RELEASE`
+to `20261029-avatars-2` so an already-open tab, cached against the old
+`client.js`, actually picks up the fix.
+
+The regression test for this one needed a workaround: Node's
+`EventSource` (the `--experimental-eventsource` flag `pnpm test` sets)
+silently ignores a custom `headers` option — confirmed by reading its own
+source, not assumed — so a cookie-authenticated SSE connection can't
+actually be driven end-to-end through jsdom the way every other
+`spec/live-sync.test.ts` case does. The new test instead dispatches
+synthetic, server-shaped SSE events directly onto the real, running
+`EventSource` instance `client.js` is really listening on, driving the
+exact real functions the bug lived in (`appendEntry`/`renderEntry`, the
+real `avatar-update` listener) — the server-broadcast side of the fix
+(correct event order and per-session scoping) was separately confirmed by
+reading the raw SSE wire, the same technique `spec/sse.test.ts` already
+uses.
+
+Verified against a fresh isolated instance on port 8096, restarted clean
+after an earlier background-timeout killed it mid-run (that earlier run's
+cascading failures were the dead server, not a real regression — confirmed
+by a clean rerun against a fresh instance). Root's own `:8094` QA server
+was never touched. `pnpm typecheck` and the full `pnpm test` suite (176
+tests) passed. No push, deploy, API call, secret read, or history rewrite
+from this session; root will verify in its own browser and push/deploy
+once satisfied.
