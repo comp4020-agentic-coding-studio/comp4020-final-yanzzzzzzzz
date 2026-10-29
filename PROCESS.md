@@ -157,5 +157,5 @@ history rewrite changed earlier commit identifiers. Local retained objects
 had hidden broken citations. References were mapped to matching current
 commits; future evidence verification must use a fresh reachable-history
 clone, rather than treating local object existence as sufficient. The checker
-was not weakened. This correction and browser acceptance evidence belong to
-the final handover record.
+was not weakened. See the [submission audit](docs/submission-readiness-2026-10-30.md) for CI repairs,
+206 passing tests, viewport checks and the unresolved real Gemini timeout.
