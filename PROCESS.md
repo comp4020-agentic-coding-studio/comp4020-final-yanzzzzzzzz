@@ -2731,3 +2731,76 @@ the empty-cover-upload fix
 and the previous entry recording the push and the then-401 key
 ([`d709b2c`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-yanzzzzzzzz/commit/d709b2c)).
 This session added no new code commit — only this PROCESS.md entry.
+
+## Judge leniency, a readable transcript, and a real multiline composer
+
+Root relayed three usability requests from playtesting: the AI judge should
+be "宽容表达，严格关键逻辑" (lenient on expression, strict on key logic) for a
+final guess; the room's transcript read too much like a dumped log and not
+like a normal conversation; and the single-line 200-character input was
+cutting off genuine final explanations.
+
+**The judge prompt** (`src/llm.ts`'s `systemPrompt()`) already judged
+semantic content over keyword-matching, but its wording left room for a
+guess phrased differently from the solution's own words to read as
+"incomplete" for that reason alone. The guess rules now explicitly tell the
+model a paraphrase, synonym, informal wording, a typo, or a concise
+explanation is exactly as valid as the solution's own phrasing, and that
+detail the premise never needed explained isn't required — while keeping
+"incomplete" scoped to an actually-missing cause/twist and "incorrect" to a
+real contradiction, never a wording mismatch
+([`b7e353a`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-yanzzzzzzzz/commit/b7e353a)).
+New contract tests in `spec/gemini-judge.test.ts` pin the prompt text this
+file sends — they prove what instruction goes out, not that a real Gemini
+call actually judges any given paraphrase correctly; that remains provable
+only against a real key, same caveat the existing "what six real calls
+actually prove" entry above already carries. No change to the response
+schema, the DB verdict enum, the fixed reply sentences, or the mock judge's
+own logic.
+
+**The transcript and composer**
+([`315624e`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-yanzzzzzzzz/commit/315624e))
+replace the single-line `maxlength="200"` `<input>` with a `<textarea>`
+backed by a new `src/limits.ts` `QUESTION_MAX_LENGTH` (2000) shared between
+the server route and the render/client, so the enforced and advertised
+limits can't drift apart — and a submission over the limit is now rejected
+with an explicit `notice=too-long`, never silently sliced. The old
+`.slice(0, 200)` is exactly the bug a previous session's manual real-key
+testing had already logged honestly without fixing: a correct, complete
+final explanation that ran past 200 characters got truncated before the
+judge read the rest, and the resulting "incomplete" verdict blamed the
+player's reasoning for what was actually this app's own input box. The
+transcript now groups each entry with a name and a kind badge (❓ Question /
+🎯 Final guess), aligns a message by the *viewer's own session ownership*
+rather than a blanket "every other player is on the right" (which would
+misattribute whose message is whose with three or more people in a room),
+and visually distinguishes the judge's own fixed reply from a plain system
+notice via `src/llm.ts`'s new `JUDGE_REPLY_TEXTS` exact-match set — no DB
+pairing column added, SSR and the SSE live-append render the identical
+markup from the identical classification rule.
+
+A root browser check against the server actually restarted on the new code
+(not a stale process still serving the old SSR) caught two real regressions
+before this landed: an unscoped `.entry-question`/`.entry-verdict` CSS
+selector collided with the `<li>`'s own `entry-${kind}` class
+(`entry-question`/`entry-guess` is also a valid *kind* class name) and
+forced block-level pre-wrap spacing onto the entire message bubble,
+multiplying a one-line question's rendered height several times over; and
+the composer's `position: sticky` covered the lower transcript while
+scrolling. Both are fixed in the same commit — the CSS selector scoped to
+`.entry > p.entry-question` / `.entry > p.entry-verdict`, with a regression
+test in `spec/rooms.test.ts` pinning the scoped rule and rejecting the exact
+unscoped pattern that caused it — and the composer reverted to normal
+document flow rather than building a scroll-clipped pane this fix didn't
+need.
+
+Everything was verified against an isolated local server (port 8090, its own
+throwaway `/data` dir, `ALLOW_MOCK_JUDGE=1`, restarted after every source
+edit so what's being checked is the current code, not a stale process) —
+root's own browser review is exactly what surfaced the two regressions
+above, which a Node-`fetch`-only check wouldn't have caught. `pnpm
+typecheck`, the full `pnpm test` suite (148 passed, 0 failed), `pnpm build`,
+and `pnpm check:evidence` all ran clean afterward. No DB schema change, no
+model/provider change, no new paid call, and no general player chat was
+added — this stayed scoped to how an existing question/guess/verdict is
+composed, limited, and displayed.
