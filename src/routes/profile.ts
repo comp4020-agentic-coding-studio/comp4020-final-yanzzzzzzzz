@@ -30,19 +30,49 @@ const AVATAR_NOTICES: Record<string, string> = {
   "pixel-limit": avatarRejectionMessage("pixel-limit"),
 };
 
-// After a rejected avatar upload, the redirect back to GET /profile carries
-// whatever the player had already typed into the OTHER (separate) form's
-// nickname/bio fields as plain query params — not saved anywhere, just
-// round-tripped through the URL so profilePage() can re-fill the inputs
-// instead of the player finding their unsaved typing silently gone. Never
-// persisted: a reload of the plain /profile URL (no query string) shows
-// whatever's actually saved, same as always.
+// After ANY /profile/avatar(/remove) redirect — success, rejection, or a
+// no-file no-op — the player's unsaved nickname/bio typing in the OTHER
+// (separate) form is carried back as plain query params, never saved
+// anywhere: just round-tripped through the URL so profilePage() can re-fill
+// the inputs instead of the player finding their unsaved typing silently
+// gone. A reload of the plain /profile URL (no query string) always shows
+// whatever's actually saved in the database, same as before this existed.
+//
+// Presence, not truthiness, decides whether a field is carried: the hidden
+// draftNickname/draftBio inputs (public/profile-avatar.js) are always
+// present in this form's submission once JS has run once, even when their
+// value is now "" — e.g. the player had a saved nickname, cleared the text
+// box, then uploaded an avatar before saving. Checking `body.draftNickname`
+// alone would treat that empty string as "nothing to carry" and the draft
+// param would silently vanish, which would make profilePage() fall back to
+// re-displaying the OLD saved nickname — overwriting the player's visible
+// clear-out with text they'd already deleted. `in body` preserves that
+// explicit empty state through the redirect; only a genuinely absent field
+// (this app's own hidden inputs are never absent, but a non-JS/non-browser
+// submission could lack them) is left out of the query string entirely.
+function draftQueryString(body: Record<string, unknown>): string {
+  const draftQs = new URLSearchParams();
+  if ("draftNickname" in body) draftQs.set("draftNickname", String(body.draftNickname ?? ""));
+  if ("draftBio" in body) draftQs.set("draftBio", String(body.draftBio ?? ""));
+  return draftQs.toString();
+}
+
+function redirectWithDraft(path: string, draftQs: string, extra?: string): string {
+  const params = [draftQs, extra].filter(Boolean).join("&");
+  return params ? `${path}?${params}` : path;
+}
+
+// Bounded to the same maxlength the nickname/bio <input>s themselves carry
+// (src/render/profile.ts) — this is a redisplay-only value, never saved, but
+// an oversized query string is still worth capping rather than handing an
+// arbitrarily long attacker/accident-supplied string straight to the
+// renderer's own escapeHtml() call.
 function draftParams(c: { req: { query: (name: string) => string | undefined } }): {
   nickname?: string;
   bio?: string;
 } {
-  const nickname = c.req.query("draftNickname");
-  const bio = c.req.query("draftBio");
+  const nickname = c.req.query("draftNickname")?.slice(0, 24);
+  const bio = c.req.query("draftBio")?.slice(0, 140);
   return { nickname, bio };
 }
 
@@ -109,14 +139,11 @@ profileRoute.post(
     const sessionId = getOrCreateSessionId(c);
     const body = await c.req.parseBody();
 
-    // The other form's nickname/bio, round-tripped as a draft on any
-    // redirect below that doesn't itself save them — see draftParams().
-    const draftQs = new URLSearchParams();
-    const draftNickname = String(body.draftNickname ?? "");
-    const draftBio = String(body.draftBio ?? "");
-    if (draftNickname) draftQs.set("draftNickname", draftNickname);
-    if (draftBio) draftQs.set("draftBio", draftBio);
-    const draftSuffix = draftQs.size ? `&${draftQs.toString()}` : "";
+    // The other form's nickname/bio, round-tripped as a draft on EVERY
+    // redirect below — including the success path, which does not itself
+    // save these fields (db.ts's setProfile() is a separate save, never
+    // called from this route) — see draftQueryString()'s own comment.
+    const draftQs = draftQueryString(body);
 
     // Same real-browser sentinel shape as the cover-upload form
     // (routes/rooms.ts): an untouched <input type="file"> still submits as
@@ -124,12 +151,12 @@ profileRoute.post(
     const isEmptyFileSentinel =
       body.avatarFile instanceof File && body.avatarFile.name === "" && body.avatarFile.size === 0;
     if (!(body.avatarFile instanceof File) || isEmptyFileSentinel) {
-      return c.redirect(`/profile${draftSuffix ? `?${draftQs.toString()}` : ""}`, 303);
+      return c.redirect(redirectWithDraft("/profile", draftQs), 303);
     }
 
     const result = await processAvatarUpload(body.avatarFile);
     if (!result.ok) {
-      return c.redirect(`/profile?notice=${result.reason}${draftSuffix}`, 303);
+      return c.redirect(redirectWithDraft("/profile", draftQs, `notice=${result.reason}`), 303);
     }
 
     const previous = getProfile(sessionId).avatarImage;
@@ -141,20 +168,29 @@ profileRoute.post(
     if (previous) deleteAvatarImage(previous);
     refreshLiveAvatar(sessionId);
 
-    return c.redirect("/profile?saved=1", 303);
+    return c.redirect(redirectWithDraft("/profile", draftQs, "saved=1"), 303);
   },
 );
 
-profileRoute.post("/profile/avatar/remove", (c) => {
+// Reads the same hidden draftNickname/draftBio fields as POST /profile/avatar
+// above (the "Remove uploaded avatar" button is a second submit button on
+// that same <form>, see src/render/profile.ts — formaction routes it here,
+// but the form's own fields, including the two hidden draft inputs, still
+// submit with it) — needs its own parseBody() since this is a different
+// request/handler, not a continuation of the upload one.
+profileRoute.post("/profile/avatar/remove", async (c) => {
   if (!isSameOrigin(c)) return c.body(null, 403);
   const sessionId = getOrCreateSessionId(c);
+  const body = await c.req.parseBody();
+  const draftQs = draftQueryString(body);
+
   const previous = getProfile(sessionId).avatarImage;
   if (previous) {
     setAvatarImage(sessionId, null);
     deleteAvatarImage(previous);
     refreshLiveAvatar(sessionId);
   }
-  return c.redirect("/profile?saved=1", 303);
+  return c.redirect(redirectWithDraft("/profile", draftQs, "saved=1"), 303);
 });
 
 // Public, no session/ownership check: an avatar image is a small,

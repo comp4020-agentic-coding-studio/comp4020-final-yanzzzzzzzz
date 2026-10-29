@@ -139,6 +139,119 @@ it("removing an uploaded avatar restores the emoji/preset fallback, and a stale 
 // regression spec/cover-upload.test.ts covers) — the avatar route must
 // treat this as "no file chosen," never as a corrupt-upload rejection, and
 // must never clear an avatar the player already has.
+// A real root browser QA report: selected an avatar through the native file
+// chooser, typed an unsaved nickname and bio into the OTHER (separate) form,
+// submitted the upload — it succeeded and the image persisted, but the
+// redirect to /profile?saved=1 dropped both unsaved text fields, because the
+// draft-preservation query params were only ever attached on the
+// rejection/no-file redirects, not the success one. Fixed by attaching the
+// same draftNickname/draftBio query params to every redirect this route can
+// take, success included — this test drives the real multipart POST and
+// checks the field values actually come back on the following GET, while
+// also confirming the database itself was never touched by the draft (a
+// draft is redisplay-only, never saved).
+it("an unsaved nickname/bio draft survives a SUCCESSFUL avatar upload's redirect, without being saved to the database", async () => {
+  const first = await fetch(new URL("/", baseUrl), { redirect: "manual" });
+  const cookie = parseCookie(first.headers.getSetCookie());
+
+  const jpeg = await makeAvatarJpeg({ r: 30, g: 180, b: 30 });
+  const form = new FormData();
+  form.set("avatarFile", new Blob([jpeg], { type: "image/jpeg" }), "me.jpg");
+  form.set("draftNickname", "Avatar QA");
+  form.set("draftBio", "Avatar upload draft verification");
+  const res = await fetch(new URL("/profile/avatar", baseUrl), {
+    method: "POST",
+    headers: { cookie },
+    body: form,
+    redirect: "manual",
+  });
+  expect(res.status).toBe(303);
+  const location = res.headers.get("location") ?? "";
+  expect(location).toContain("saved=1");
+  expect(location).toContain("draftNickname=Avatar");
+  expect(location).toContain("draftBio=Avatar");
+
+  const html = await (await fetch(new URL(location, baseUrl), { headers: { cookie } })).text();
+  expect(html).toContain('value="Avatar QA"');
+  expect(html).toContain('value="Avatar upload draft verification"');
+  // The avatar itself really did upload and persist.
+  expect(html).toMatch(/\/uploads\/avatar\/[0-9a-f-]+\.webp/);
+
+  // The draft text was NEVER actually saved — a fresh request carrying the
+  // same cookie but no draft query string shows the real (still-unset)
+  // saved nickname/bio, not the draft text.
+  const plain = await (await fetch(new URL("/profile", baseUrl), { headers: { cookie } })).text();
+  expect(plain).not.toContain('value="Avatar QA"');
+});
+
+// Same real bug, the explicit-empty-clear case: a player had a SAVED
+// nickname, cleared the text box to blank, then uploaded a new avatar before
+// ever clicking "Save" on the nickname/bio form. The clear-out (now an empty
+// string, not an absent field) has to survive the redirect too — checking
+// `body.draftNickname` for truthiness instead of presence would silently
+// drop the empty draft and re-display the OLD saved nickname instead,
+// undoing the player's visible edit.
+it("an explicit empty draft (clearing a previously-saved nickname) survives an avatar upload's redirect, not reverting to the old saved value", async () => {
+  const first = await fetch(new URL("/", baseUrl), { redirect: "manual" });
+  const cookie = parseCookie(first.headers.getSetCookie());
+
+  await fetch(new URL("/profile", baseUrl), {
+    method: "POST",
+    headers: { cookie, "content-type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({ nickname: "OldSavedName", bio: "old bio" }),
+    redirect: "manual",
+  });
+
+  const jpeg = await makeAvatarJpeg({ r: 180, g: 30, b: 180 });
+  const form = new FormData();
+  form.set("avatarFile", new Blob([jpeg], { type: "image/jpeg" }), "me.jpg");
+  form.set("draftNickname", ""); // explicitly cleared, not merely untouched
+  form.set("draftBio", "old bio");
+  const res = await fetch(new URL("/profile/avatar", baseUrl), {
+    method: "POST",
+    headers: { cookie },
+    body: form,
+    redirect: "manual",
+  });
+  const location = res.headers.get("location") ?? "";
+  expect(location).toContain("draftNickname=");
+
+  const html = await (await fetch(new URL(location, baseUrl), { headers: { cookie } })).text();
+  expect(html).not.toContain('value="OldSavedName"');
+  expect(html).toContain('id="nickname"');
+  // The input's value should be empty, not the old saved nickname — the
+  // attributes span multiple lines in the rendered markup, so this matches
+  // across newlines rather than assuming a single-line tag.
+  const nicknameInputMatch = html.match(/<input[\s\S]*?id="nickname"[\s\S]*?\/>/);
+  expect(nicknameInputMatch?.[0]).toContain('value=""');
+});
+
+it("an unsaved draft also survives the 'Remove uploaded avatar' redirect", async () => {
+  const first = await fetch(new URL("/", baseUrl), { redirect: "manual" });
+  const cookie = parseCookie(first.headers.getSetCookie());
+
+  const jpeg = await makeAvatarJpeg({ r: 10, g: 10, b: 240 });
+  const uploadForm = new FormData();
+  uploadForm.set("avatarFile", new Blob([jpeg], { type: "image/jpeg" }), "me.jpg");
+  await fetch(new URL("/profile/avatar", baseUrl), { method: "POST", headers: { cookie }, body: uploadForm });
+
+  const removeForm = new FormData();
+  removeForm.set("draftNickname", "Still Typing");
+  removeForm.set("draftBio", "");
+  const res = await fetch(new URL("/profile/avatar/remove", baseUrl), {
+    method: "POST",
+    headers: { cookie },
+    body: removeForm,
+    redirect: "manual",
+  });
+  expect(res.status).toBe(303);
+  const location = res.headers.get("location") ?? "";
+  expect(location).toContain("draftNickname=Still");
+
+  const html = await (await fetch(new URL(location, baseUrl), { headers: { cookie } })).text();
+  expect(html).toContain('value="Still Typing"');
+});
+
 it("a real browser's empty file-input sentinel for avatar upload is a no-op, never a rejection or a silent clear", async () => {
   const first = await fetch(new URL("/", baseUrl), { redirect: "manual" });
   const cookie = parseCookie(first.headers.getSetCookie());
