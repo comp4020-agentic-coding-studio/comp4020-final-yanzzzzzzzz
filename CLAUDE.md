@@ -68,3 +68,6 @@
 - A question may confirm a single logically entailed fact without explaining the entire solution. New unknown-detail replies use Irrelevant; historical reply strings remain recognized. Final guesses still require the essential causal explanation.
 
 - Bounded lobby lists need a deterministic insertion-order tie-break when creation timestamps have only second precision. Test more than twenty rooms sharing exactly one timestamp; never fix missing-new-room failures by enlarging the list or weakening cover assertions.
+
+- Personal investigation and story archives must use the request cookie's session, never a query-supplied identity. Own private story reuse must be allowed only to its author in both GET selection and POST creation; list queries never select solutions.
+- Personal time receives only the same server-clock credit as the deduplicated site total. Preserve NULL for untracked history, and add new participant columns after legacy table/FK repairs. Test joined sessions and actual response contracts rather than modifying APIs to fit fixtures.

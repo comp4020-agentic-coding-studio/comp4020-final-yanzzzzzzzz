@@ -139,24 +139,29 @@ is separate; its literature argument is not interchangeable with this record.
 
 ## Final revision and release evidence
 
-The coordinating assistant directly condensed these documents at the author's
-request. Original process narration is archived; the COMP8020 note remains
-a separate literature argument requiring author review.
+The coordinating assistant condensed these documents at the author's request;
+original narration remains archived and the COMP8020 literature note is separate.
 
 [7447824](https://github.com/comp4020-agentic-coding-studio/comp4020-final-yanzzzzzzzz/commit/7447824)
-adds host-confirmed unsolved closure through an additive closed_at column,
-reconnect snapshots and the chat-first case-file layout. New unknown-detail
-replies use Irrelevant, while historical replies remain recognized. The 205
-tests, typecheck and build passed; browser checks verified mobile folding and
-no horizontal overflow. A separate-session HTTPS check verified host-only
-closure, retained history, unsolved status and lobby removal. Backup
-`/data/app-before-community-1793278362314.db` passed integrity checking.
+added confirmed, unsolved host closure, reconnect snapshots and the chat-first
+case file. Its 205 tests and live two-session closure checks passed; history
+was retained and the lobby entry removed.
 
-Submission auditing then caught CI evidence failures after an authorized
-history rewrite changed earlier commit identifiers. Local retained objects
-had hidden broken citations. References were mapped to matching current
-commits; future evidence verification must use a fresh reachable-history
-clone, rather than treating local object existence as sufficient. The checker
-was not weakened. Subsequent validation passed 206 tests and viewport checks;
-one live Gemini request timed out, so real-model acceptance remains unconfirmed.
-The optional submission-check report was removed at the author's request.
+History rewriting changed earlier commit identifiers. Local retained objects
+hid broken citations until CI failed. References were repaired and checked
+in a fresh clone. A later CI failure exposed same-second lobby timestamp ties;
+[60161b8](https://github.com/comp4020-agentic-coding-studio/comp4020-final-yanzzzzzzzz/commit/60161b8)
+added deterministic insertion ordering and a 25-room regression fixture.
+
+[c3dc9d6](https://github.com/comp4020-agentic-coding-studio/comp4020-final-yanzzzzzzzz/commit/c3dc9d61474c5ad572d96f7588fa26f05bbf6e52)
+adds cookie-scoped investigation history, owned public/private stories and
+Uploaded by you badges. Personal time receives only existing deduplicated
+heartbeat credit; historical NULL stays Not recorded. Authors can replay
+private stories, strangers cannot. The column is added after legacy table
+repairs. All 219 tests, typecheck and build passed; production was backed up
+before deployment. Failed test fixtures had omitted joining or misread the
+heartbeat response; corrections preserved the API and strengthened migration
+checks. Three rewritten classic cases were uploaded through the real form,
+with sources in hidden solutions. One earlier real Gemini call timed out;
+real-model reliability remains unconfirmed, despite passing mock checks.
+
