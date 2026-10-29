@@ -2804,3 +2804,31 @@ and `pnpm check:evidence` all ran clean afterward. No DB schema change, no
 model/provider change, no new paid call, and no general player chat was
 added — this stayed scoped to how an existing question/guess/verdict is
 composed, limited, and displayed.
+
+## Cache-busting the deployed composer/transcript JS and CSS
+
+Root pushed and deployed `315624e` (the textarea composer and transcript
+rework above), but `src/render/asset.ts`'s `RELEASE` constant — its own
+documented rule is to bump on every `/public` byte change, since a browser
+or edge cache keys a static asset by URL indefinitely — was still
+`20261028-case-file-5` from a prior session's work, not bumped for this
+session's `public/client.js`/`public/styles.css` changes. Left unbumped, a
+tab already open before the deploy would keep serving the OLD `client.js`
+against the NEW server-rendered markup (the `<textarea>`, the ownership-
+based `entry-own`/`entry-other` classes) — a real mismatch, not a cosmetic
+one, since the old JS's `renderEntry()` doesn't know those classes exist.
+Bumped to `20261029-room-conversation-1`
+([`9f6ffff`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-yanzzzzzzzz/commit/9f6ffff)),
+verified against a freshly restarted isolated server that the homepage's
+asset URLs carry the new string and not the old one.
+
+Root's own deployment record for `315624e`, for anyone verifying against
+production: `/data` was backed up to
+`/data/app-before-community-1793246749318.db` before deploying; its
+integrity checked out, holding 6 rooms / 24 entries at backup time. Root
+executed the push/deploy directly — this session made no network call, held
+no deploy credential, and verified only against its own isolated local
+server (port 8090, throwaway `/data` dir, `ALLOW_MOCK_JUDGE=1`, restarted on
+every source change). `pnpm typecheck`, the full `pnpm test` suite (148
+passed, 0 failed), `pnpm build`, and `pnpm check:evidence` all ran clean
+after this bump.
