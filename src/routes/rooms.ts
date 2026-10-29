@@ -162,12 +162,20 @@ rooms.post(
       return c.redirect("/rooms/new?mode=author&notice=incomplete-puzzle", 303);
     }
 
-    // An absent/empty file input comes back from parseBody() as a plain
-    // string (see Hono's own body-parsing behavior), never as a File with
-    // size 0 — so "the field is a real File" is itself the no-cover check,
-    // with no size-0 special case needed.
+    // A <form> field that was never touched (no file input present at all,
+    // or the form didn't include one) comes back from parseBody() as a
+    // plain string. But a real browser's <input type="file"> with NOTHING
+    // selected still submits the field — as a File with name "" and size 0
+    // (reproduced against Node's own multipart parser, not assumed) — so
+    // "the field is a File" alone is NOT a reliable no-cover check. Only
+    // that exact empty-sentinel shape means "no file chosen"; any File with
+    // a real filename (including a genuinely empty 0-byte upload, which a
+    // user could actually pick) still goes through processCoverUpload and
+    // gets a proper too-small/corrupt rejection, never a silent skip.
+    const isEmptyFileSentinel =
+      body.cover instanceof File && body.cover.name === "" && body.cover.size === 0;
     let coverPath: string | null = null;
-    if (body.cover instanceof File) {
+    if (body.cover instanceof File && !isEmptyFileSentinel) {
       const result = await processCoverUpload(body.cover);
       if (!result.ok) {
         return c.redirect(`/rooms/new?mode=author&notice=${result.reason}`, 303);

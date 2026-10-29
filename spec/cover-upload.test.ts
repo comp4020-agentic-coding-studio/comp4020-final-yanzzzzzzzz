@@ -123,6 +123,57 @@ it("no file chosen falls back to the existing archive cover, not a blank image",
   expect(roomHtml).toMatch(/\/images\/mystery\/case-archive\.webp/);
 });
 
+// Real Chromium (confirmed against Node's own multipart/undici FormData
+// parser, not assumed) submits an untouched <input type="file"> not as a
+// missing field but as an actual multipart part: `filename=""`, zero bytes,
+// `Content-Type: application/octet-stream` — which parses to a real `File`
+// object (name "", size 0), not the plain string an absent field becomes.
+// `FormData.set()` in the other tests above never produces this shape (it
+// either omits the field or attaches a real named File), so this is the one
+// test in this file that hand-builds the multipart body to reach the actual
+// browser-sent bytes. Before the fix, routes/rooms.ts treated any `File`
+// instance as "a cover was uploaded" and handed this empty sentinel to
+// processCoverUpload(), which fails sharp's decode and redirects with
+// notice=corrupt — silently dropping every other field the author typed.
+it("a real browser's empty file-input sentinel (filename=\"\", 0 bytes) is treated as no cover, not a corrupt upload", async () => {
+  const title = `Browser Empty Cover Case ${Date.now()}`;
+  const boundary = "----coverUploadRegressionBoundary";
+  const field = (name: string, value: string) =>
+    `--${boundary}\r\nContent-Disposition: form-data; name="${name}"\r\n\r\n${value}\r\n`;
+  const body =
+    field("mode", "author") +
+    field("title", title) +
+    field("premise", `${title} premise.`) +
+    field("solution", `${title} solution.`) +
+    field("shared", "on") +
+    `--${boundary}\r\n` +
+    `Content-Disposition: form-data; name="cover"; filename=""\r\n` +
+    `Content-Type: application/octet-stream\r\n\r\n\r\n` +
+    `--${boundary}--\r\n`;
+
+  const res = await fetch(new URL("/rooms", baseUrl), {
+    method: "POST",
+    headers: { "Content-Type": `multipart/form-data; boundary=${boundary}` },
+    body,
+    redirect: "manual",
+  });
+  expect(res.status).toBe(303);
+  const location = res.headers.get("location") ?? "";
+  expect(location).not.toContain("notice=corrupt");
+  expect(location).toMatch(/^\/rooms\/[A-Z0-9]+$/);
+
+  const cookie = requireCookie(parseCookie(res.headers.getSetCookie()));
+  const code = location.split("/").pop() ?? "";
+  const roomHtml = await (
+    await fetch(new URL(`/rooms/${code}`, baseUrl), { headers: { cookie } })
+  ).text();
+  // All the author's text fields must have actually been saved, not lost to
+  // the old bug's implicit "any File means re-validate and maybe reject".
+  expect(roomHtml).toContain(title);
+  expect(roomHtml).not.toMatch(/\/uploads\/cover\//);
+  expect(roomHtml).toMatch(/\/images\/mystery\/case-archive\.webp/);
+});
+
 it("a corrupt/fake-MIME file is rejected with a clear notice, not a 500 or a silent success", async () => {
   const title = `Corrupt Case ${Date.now()}`;
   const fakeBytes = new TextEncoder().encode("definitely not an image".repeat(10));
