@@ -1167,34 +1167,112 @@ textarea:focus-visible {
 }
 
 .entry {
-  padding: 0.75rem 1rem;
+  /* A readable conversation line length, not the full column width — long
+     lines are what made the old transcript read as a dumped log rather than
+     a conversation. max-width keeps this comfortable; width: fit-content
+     plus the flex alignment below is what actually lets a short message
+     hug its own side instead of stretching edge-to-edge regardless of
+     content length. */
+  max-width: min(34rem, 90%);
+  width: fit-content;
+  padding: 0.6rem 0.9rem;
   border: 1px solid var(--border);
-  border-radius: 0.5rem;
+  border-radius: 0.6rem;
   background: var(--bg-raised);
+  overflow-wrap: break-word;
 }
 
+/* A system/judge notice is never "someone's message," so it never takes a
+   side — centered and visually subdued keeps it readable as an aside rather
+   than competing with the actual question/answer exchange either player
+   came here to read. */
 .entry-system {
+  align-self: center;
+  max-width: min(30rem, 90%);
   font-style: italic;
+  font-size: 0.9rem;
   color: var(--fg-dim);
   border-style: dashed;
+  text-align: center;
+}
+
+/* The judge's own fixed reply ("Yes.", "Correct!", a failure message) is
+   still a system-kind row (no DB pairing exists, see src/render/room.ts),
+   but gets the mystery theme's gold accent and drops the italic/dashed
+   "aside" treatment — it reads as the one other voice in the room, not as
+   a stray notice, without inventing a new transcript entry kind. */
+.entry-judge-reply {
+  font-style: normal;
+  border-style: solid;
+  border-color: var(--gold-line);
+  background: color-mix(in srgb, var(--accent) 10%, var(--bg-raised));
+  color: var(--fg);
+}
+
+.entry-judge-reply .entry-label {
+  color: var(--accent-bright);
+}
+
+/* Ownership-based alignment: a message this viewer's own session posted
+   sits on the right, same side a messaging-app convention would put "my"
+   bubble; anyone else's sits on the left. Real session ownership, not a
+   blanket "every other player is on the right" — with more than two people
+   in a room that would misattribute whose message is whose. */
+.entry-own {
+  align-self: flex-end;
+  border-color: var(--gold-line);
+}
+
+.entry-other {
+  align-self: flex-start;
 }
 
 .entry-label {
   font-weight: 600;
 }
 
-.entry-question,
-.entry-verdict {
-  margin: 0.25rem 0;
+.entry-meta {
+  display: flex;
+  align-items: baseline;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+  margin: 0 0 0.2rem;
 }
 
+.entry-kind-badge {
+  font-size: 0.72rem;
+  padding: 0.05rem 0.4rem;
+  border-radius: 1rem;
+  border: 1px solid var(--border);
+  color: var(--fg-dim);
+  white-space: nowrap;
+}
+
+/* Scoped to the <p> children specifically, NOT just the class name — the
+   <li> itself also carries a class of "entry-question" or "entry-guess"
+   (entry-${entry.kind}, src/render/room.ts) to mark what KIND of entry it
+   is, a separate meaning from these two text paragraphs. An unscoped
+   `.entry-question { white-space: pre-wrap }` collided with that LI class
+   and forced the whole bubble into block-level pre-wrap spacing — on a
+   one-line question this inflated a ~90px bubble into one over 300px tall,
+   a real regression a root browser check caught. */
+.entry > p.entry-question,
+.entry > p.entry-verdict {
+  margin: 0.25rem 0;
+  white-space: pre-wrap;
+}
+
+/* Not position: sticky — a sticky composer pinned to the viewport bottom
+   covered the lower transcript while scrolling (a root browser check caught
+   this), and a correctly-clipped scroll pane for just the transcript is more
+   than this fix needs right now. Normal document flow: the composer sits
+   after the transcript and scrolls with the page, same as it did before this
+   session's render changes. */
 #ask-form {
   display: flex;
   flex-wrap: wrap;
   gap: 0.5rem;
   align-items: flex-end;
-  position: sticky;
-  bottom: 0;
   padding: 0.75rem 0;
   background: var(--bg);
 }
@@ -1203,8 +1281,23 @@ textarea:focus-visible {
   flex-basis: 100%;
 }
 
-#ask-form input {
+#ask-form textarea {
   flex: 1 1 16rem;
+  min-height: 3.5rem;
+  max-height: 12rem;
+  resize: vertical;
+  font-family: inherit;
+}
+
+.composer-hint {
+  flex-basis: 100%;
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  margin: 0.2rem 0 0;
+  font-size: 0.78rem;
+  color: var(--fg-faint);
 }
 
 .ask-buttons {

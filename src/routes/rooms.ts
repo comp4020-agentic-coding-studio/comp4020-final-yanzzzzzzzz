@@ -24,6 +24,7 @@ import {
   transferHost,
 } from "../db.ts";
 import { JUDGE_FAILURE_MESSAGES, judge, judgeAvailability } from "../llm.ts";
+import { QUESTION_MAX_LENGTH } from "../limits.ts";
 import { tryLockRoom, unlockRoom } from "../room-lock.ts";
 import { broadcast, connectionCount, listMembers, subscribe } from "../sse.ts";
 import { getOrCreateSessionId } from "../session.ts";
@@ -43,6 +44,7 @@ const NOTICES: Record<string, string> = {
   "host-only": "Only the host can do that.",
   "not-started": "This case hasn't started yet — wait for the host.",
   "author-guess": "You wrote this case — let someone else crack it.",
+  "too-long": `That's too long — keep it under ${QUESTION_MAX_LENGTH} characters.`,
   "unavailable-puzzle": "That puzzle isn't available to pick anymore.",
   "incomplete-puzzle": "Fill in a title, premise, and solution to create your case.",
   "cover-too-large": "That request was too large — the cover image limit is 2 MiB.",
@@ -405,8 +407,20 @@ rooms.post("/rooms/:code/ask", async (c) => {
   const label = displayLabel(room.id, sessionId);
 
   const body = await c.req.parseBody();
-  const question = String(body.question ?? "").trim().slice(0, 200);
+  const question = String(body.question ?? "").trim();
   if (!question) return c.redirect(`/rooms/${room.code}`, 303);
+  // Rejected outright, never silently sliced: a final explanation that runs
+  // past the limit used to get truncated server-side with no signal at all,
+  // so the judge would score whatever happened to survive the cut — a wrong
+  // verdict caused by this app's own input box, not the player's reasoning
+  // (see PROCESS.md's "a longer, more complete guess ... silently clipped"
+  // entry). An explicit notice plus the client keeping the player's full
+  // draft (public/client.js never clears the textarea on a rejection) means
+  // the player can see why it bounced and retry with the same text, not
+  // re-type it from a mangled remnant.
+  if (question.length > QUESTION_MAX_LENGTH) {
+    return c.redirect(`/rooms/${room.code}?notice=too-long`, 303);
+  }
   const kind: "question" | "guess" = body.kind === "guess" ? "guess" : "question";
 
   if (kind === "guess" && puzzle.author_session_id === sessionId) {

@@ -222,3 +222,59 @@ it("never leaks a puzzle's solution to the client while the room is active", asy
     );
   }
 });
+
+// Regression test for a real root-reviewed bug: src/render/room.ts marks an
+// entry's own <li> with a class of "entry-question" or "entry-guess" (via
+// `entry-${entry.kind}`) to say what KIND of row it is — a different meaning
+// from the two <p class="entry-question">/<p class="entry-verdict"> text
+// paragraphs inside it. An unscoped `.entry-question { white-space: pre-wrap
+// }` in public/styles.css collided with the LI's OWN class of the same name
+// and forced block-level pre-wrap spacing onto the whole bubble, inflating a
+// one-line question's rendered height well past what three short paragraphs
+// should take. This doesn't run a real browser layout engine — it instead
+// pins the two rules this bug depends on never regressing together: the
+// scoped selector descendant-combines through ".entry > p", and the LI kind
+// class and the P text class are never merged back into one bare selector.
+it("scopes the transcript's pre-wrap text styling to the <p> children, never colliding with the <li>'s own entry-question/entry-guess kind class", async () => {
+  const css = await (await fetch(new URL("/styles.css", baseUrl))).text();
+  expect(css).toMatch(/\.entry\s*>\s*p\.entry-question\s*,\s*\.entry\s*>\s*p\.entry-verdict\s*\{[^}]*white-space:\s*pre-wrap/);
+  // A bare, unscoped selector starting a line with ".entry-question," (no
+  // ".entry > p." prefix) is exactly the regression this guards against — it
+  // would match the LI's own "entry-${kind}" class again, not just the <p>.
+  expect(css).not.toMatch(/^\s*\.entry-question\s*,/m);
+});
+
+it("rejects a question/guess over the character limit with an explicit notice, never silently truncating it before judging", async () => {
+  const { code } = await createRoom();
+  const { cookie } = await visitRoom(code);
+
+  const atLimit = "a".repeat(2000);
+  const okRes = await fetch(new URL(`/rooms/${code}/ask`, baseUrl), {
+    method: "POST",
+    headers: { cookie, "content-type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({ question: atLimit, kind: "question" }),
+    redirect: "manual",
+  });
+  expect(okRes.status).toBe(303);
+  expect(okRes.headers.get("location")).not.toContain("notice=too-long");
+  const afterOk = await (await fetch(new URL(`/rooms/${code}`, baseUrl), { headers: { cookie } })).text();
+  expect(afterOk).toContain(atLimit);
+
+  const overLimit = "b".repeat(2001);
+  const rejectRes = await fetch(new URL(`/rooms/${code}/ask`, baseUrl), {
+    method: "POST",
+    headers: { cookie, "content-type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({ question: overLimit, kind: "question" }),
+    redirect: "manual",
+  });
+  expect(rejectRes.status).toBe(303);
+  expect(rejectRes.headers.get("location")).toContain("notice=too-long");
+
+  // Never partially stored, let alone judged — the rejected text (or any
+  // truncated prefix of it) never reaches the transcript at all.
+  const afterReject = await (
+    await fetch(new URL(`/rooms/${code}`, baseUrl), { headers: { cookie } })
+  ).text();
+  expect(afterReject).not.toContain(overLimit);
+  expect(afterReject).not.toContain("b".repeat(2000));
+});

@@ -12,10 +12,46 @@
   );
 
   const VERDICT_LABEL = { yes: "Yes", no: "No", irrelevant: "Irrelevant", correct: "✓ Correct!" };
+  const KIND_BADGE = { question: "❓ Question", guess: "🎯 Final guess" };
+  // Mirrors src/llm.ts's JUDGE_REPLY_TEXTS — the exact fixed sentences the
+  // judge can ever hand back as a "system" entry, used the same way the
+  // server-rendered page uses it (src/render/room.ts's systemEntryHtml):
+  // purely to LABEL that row "AI judge" instead of a bare notice. Kept as a
+  // literal mirror rather than fetched from the server, same pattern
+  // NOTICE_TEXT below already follows for this file's other server-owned
+  // fixed text.
+  const JUDGE_REPLY_TEXTS = new Set([
+    "Yes.",
+    "No.",
+    "Irrelevant to the case.",
+    "Not established.",
+    "Please ask one clear question.",
+    "Correct!",
+    "Your explanation is incomplete.",
+    "That explanation contradicts the case.",
+    "The AI judge didn't respond in time, please try again shortly.",
+    "The AI judge is rate-limited right now, please try again in a moment.",
+    "The AI judge rejected its own credentials — this is a deploy configuration problem, not something a retry fixes.",
+    "The AI judge declined to answer that — try rephrasing your question.",
+    "The AI judge returned no answer, please try again.",
+    "The AI judge's answer was cut off before it finished, please try again.",
+    "The AI judge's answer couldn't be understood, please try again.",
+    "The AI judge is temporarily unavailable, please try again shortly.",
+    // src/llm.ts's deterministic mock judge (ALLOW_MOCK_JUDGE=1, local/CI
+    // only) — never a real model call, but still the judge's own fixed
+    // voice, so it's labeled the same way a real Gemini reply is.
+    "Correct (mock judge: keyword match)",
+    "Not quite (mock judge: GEMINI_API_KEY not set)",
+    "Yes (mock judge: keyword match)",
+    "Can't tell (mock judge: GEMINI_API_KEY not set)",
+  ]);
   // Mirrors src/routes/rooms.ts's NOTICES — only the subset reachable from
   // POST /rooms/:code/ask's own rejections (cooldown, not-started,
-  // author-guess), since that's the only redirect this form's own fetch()
-  // can land on.
+  // author-guess, too-long), since that's the only redirect this form's own
+  // fetch() can land on. "too-long"'s character count is read from the
+  // textarea's own maxlength attribute (set from src/limits.ts's
+  // QUESTION_MAX_LENGTH server-side) below, not hardcoded here, so the two
+  // can't silently drift apart.
   const NOTICE_TEXT = {
     cooldown: "Slow down — the same person has to wait a few seconds between questions.",
     busy: "Someone else in this room just asked — wait a moment and try again.",
@@ -23,21 +59,29 @@
     "author-guess": "You wrote this case — let someone else crack it.",
   };
 
+  const viewerSessionId = section.dataset.viewerSessionId;
+
   function escapeHtml(s) {
     return s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
   }
 
   function renderEntry(entry) {
     const li = document.createElement("li");
-    li.className = `entry entry-${entry.kind}`;
     li.dataset.id = entry.id;
     if (entry.kind === "system") {
-      li.textContent = entry.body;
+      const isJudgeReply = JUDGE_REPLY_TEXTS.has(entry.body);
+      li.className = `entry entry-system${isJudgeReply ? " entry-judge-reply" : ""}`;
+      li.innerHTML = `${isJudgeReply ? '<span class="entry-label">🤖 AI judge</span> ' : ""}${escapeHtml(entry.body)}`;
     } else {
       const verdictLabel = entry.verdict ? VERDICT_LABEL[entry.verdict] ?? entry.verdict : "…";
-      const verb = entry.kind === "guess" ? "guesses" : "asks";
+      const own = entry.session_id != null && entry.session_id === viewerSessionId;
+      li.className = `entry entry-${entry.kind} ${own ? "entry-own" : "entry-other"}`;
       li.innerHTML = `
-        <p class="entry-question"><span class="entry-label">${escapeHtml(entry.label ?? "Anonymous Detective")}</span> ${verb}: ${escapeHtml(entry.body)}</p>
+        <p class="entry-meta">
+          <span class="entry-label">${escapeHtml(entry.label ?? "Anonymous Detective")}</span>
+          <span class="entry-kind-badge">${KIND_BADGE[entry.kind]}</span>
+        </p>
+        <p class="entry-question">${escapeHtml(entry.body)}</p>
         <p class="entry-verdict">AI judge: <strong>${escapeHtml(verdictLabel)}</strong></p>
       `;
     }
@@ -277,6 +321,27 @@
   const input = form.querySelector("#question");
   const buttons = [...form.querySelectorAll("button")];
 
+  // The composer is a <textarea> so a plain Enter inserts a newline, same as
+  // any normal multiline message box — Ctrl+Enter (or Cmd+Enter on macOS) is
+  // the documented keyboard shortcut for submitting without reaching for the
+  // mouse, on top of the always-available Ask/guess buttons themselves.
+  const counterEl = document.getElementById("composer-counter");
+  const maxLength = Number(input.getAttribute("maxlength")) || 2000;
+  NOTICE_TEXT["too-long"] = `That's too long — keep it under ${maxLength} characters.`;
+  function updateCounter() {
+    if (!counterEl) return;
+    counterEl.textContent = `${input.value.length} / ${maxLength}`;
+  }
+  input.addEventListener("input", updateCounter);
+  updateCounter();
+
+  input.addEventListener("keydown", (event) => {
+    if (event.key === "Enter" && (event.ctrlKey || event.metaKey)) {
+      event.preventDefault();
+      form.requestSubmit(buttons.find((b) => b.value === "question") ?? buttons[0]);
+    }
+  });
+
   form.addEventListener("submit", async (event) => {
     event.preventDefault();
     const question = input.value.trim();
@@ -314,6 +379,7 @@
         // retry, not silently gone.
       } else {
         input.value = "";
+        updateCounter();
       }
     } catch {
       // the SSE connection or a page refresh will still show the true state;

@@ -4,12 +4,19 @@ import { layout } from "./layout.ts";
 import { escapeHtml } from "./html.ts";
 import { asset } from "./asset.ts";
 import { coverFor } from "./covers.ts";
+import { QUESTION_MAX_LENGTH } from "../limits.ts";
+import { JUDGE_REPLY_TEXTS } from "../llm.ts";
 
 const VERDICT_LABEL: Record<string, string> = {
   yes: "Yes",
   no: "No",
   irrelevant: "Irrelevant",
   correct: "✓ Correct!",
+};
+
+const KIND_BADGE: Record<"question" | "guess", string> = {
+  question: "❓ Question",
+  guess: "🎯 Final guess",
 };
 
 function onlineLabel(online: number): string {
@@ -81,14 +88,39 @@ function waitingHtml(room: Room, isHost: boolean): string {
   </section>`;
 }
 
-function entryHtml(entry: QaEntry): string {
+// A system-kind entry is either a plain room notice ("host started the
+// investigation") or the judge's own fixed reply to the question/guess entry
+// right before it (src/routes/rooms.ts always inserts the verdict reply as
+// its own row, by this app's existing design — no pairing column exists, and
+// none is added here). JUDGE_REPLY_TEXTS lets the renderer tell the two
+// apart by exact text match against the fixed sentences src/llm.ts can ever
+// produce, purely to LABEL the row "AI judge" instead of a bare notice —
+// never to change what's stored, broadcast, or asserted on verdict value.
+function systemEntryHtml(entry: QaEntry): string {
+  const isJudgeReply = JUDGE_REPLY_TEXTS.has(entry.body);
+  const label = isJudgeReply ? `<span class="entry-label">🤖 AI judge</span> ` : "";
+  return `<li class="entry entry-system${isJudgeReply ? " entry-judge-reply" : ""}" data-id="${entry.id}">${label}${escapeHtml(entry.body)}</li>`;
+}
+
+// Alignment is based on actual session ownership, read fresh per render —
+// never a blanket "every other player is on the right," which would be
+// actively misleading the moment a THIRD person's message showed up (whose
+// is whose?). An entry whose author can't be compared to the viewer (a
+// system/judge row, or one from before sessions were tracked) gets the
+// neutral centered layout below instead of a guessed side.
+function entryHtml(entry: QaEntry, viewerSessionId: string): string {
   if (entry.kind === "system") {
-    return `<li class="entry entry-system">${escapeHtml(entry.body)}</li>`;
+    return systemEntryHtml(entry);
   }
   const verdictLabel = entry.verdict ? (VERDICT_LABEL[entry.verdict] ?? entry.verdict) : "…";
-  const verb = entry.kind === "guess" ? "guesses" : "asks";
-  return `<li class="entry entry-${entry.kind}" data-id="${entry.id}">
-    <p class="entry-question"><span class="entry-label">${escapeHtml(entry.label ?? "Anonymous Detective")}</span> ${verb}: ${escapeHtml(entry.body)}</p>
+  const own = entry.session_id !== null && entry.session_id === viewerSessionId;
+  const sideClass = own ? " entry-own" : " entry-other";
+  return `<li class="entry entry-${entry.kind}${sideClass}" data-id="${entry.id}">
+    <p class="entry-meta">
+      <span class="entry-label">${escapeHtml(entry.label ?? "Anonymous Detective")}</span>
+      <span class="entry-kind-badge">${KIND_BADGE[entry.kind]}</span>
+    </p>
+    <p class="entry-question">${escapeHtml(entry.body)}</p>
     <p class="entry-verdict">AI judge: <strong>${escapeHtml(verdictLabel)}</strong></p>
   </li>`;
 }
@@ -96,7 +128,11 @@ function entryHtml(entry: QaEntry): string {
 function askFormHtml(room: Room, isAuthor: boolean): string {
   return `<form method="post" action="/rooms/${room.code}/ask" id="ask-form">
     <label for="question">Ask a yes/no question${isAuthor ? "" : ", or submit your final guess"}:</label>
-    <input type="text" id="question" name="question" maxlength="200" required autocomplete="off" />
+    <textarea id="question" name="question" maxlength="${QUESTION_MAX_LENGTH}" required rows="2"></textarea>
+    <p class="composer-hint">
+      <span id="composer-counter">0 / ${QUESTION_MAX_LENGTH}</span>
+      <span class="composer-keys">Enter for a new line · Ctrl+Enter (or ⌘+Enter) to ask</span>
+    </p>
     <div class="ask-buttons">
       <button type="submit" name="kind" value="question">Ask</button>
       ${
@@ -168,7 +204,7 @@ export function roomPage(args: {
         <p class="judging" id="judging-status" role="status" hidden></p>
 
         <ul class="transcript" id="transcript">
-          ${transcript.map(entryHtml).join("\n")}
+          ${transcript.map((e) => entryHtml(e, viewerSessionId)).join("\n")}
         </ul>
 
         ${solved || waiting ? "" : askFormHtml(room, isAuthor)}
