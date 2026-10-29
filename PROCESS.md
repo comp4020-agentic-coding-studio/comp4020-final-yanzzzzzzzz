@@ -3037,3 +3037,51 @@ was never touched. `pnpm typecheck` and the full `pnpm test` suite (176
 tests) passed. No push, deploy, API call, secret read, or history rewrite
 from this session; root will verify in its own browser and push/deploy
 once satisfied.
+
+### Third follow-up: a production-only 403 on every profile POST, caught by root's post-deploy smoke test
+
+All commits through `3365574` were pushed and deployed healthy (backup
+`/data/app-before-community-1793257708139.db`, integrity OK, 7 rooms / 29
+entries at backup time; image `deployment-01M637T7214GEXJD59N74H5Q5X`).
+Root's own HTTPS smoke script then hit a real production-only bug: a
+fresh synthetic session, HTTPS Origin exactly matching the site, and
+`sec-fetch-site: same-origin` still got a 403 posting to
+`/profile/avatar`.
+
+Root traced it to `src/same-origin.ts`: Fly's edge terminates TLS and
+forwards plain `http` to the machine
+([fly.io/docs/networking/request-headers/](https://fly.io/docs/networking/request-headers/)
+documents `X-Forwarded-Proto` as carrying the client's *original*
+scheme), so `c.req.url` inside the app is always `http://...` even when
+the browser's real `Origin` is correctly `https://...`. Comparing them
+unmodified rejected every legitimate same-origin POST in production on a
+scheme-only mismatch — invisible in every environment this session had
+tested in (local dev and CI are plain http on both sides; no prior test
+simulated a real HTTPS/Fly-proxied request).
+
+Fixed in
+[`3f2a277`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-yanzzzzzzzz/commit/3f2a277):
+the expected origin is rebuilt from the request URL's own hostname/port
+(never a client-supplied Host/Forwarded-Host/Forwarded-Port header — all
+three are attacker-controlled) with only its scheme corrected from
+`X-Forwarded-Proto`, gated to only run when actually on Fly
+(`FLY_APP_NAME`, set by the Fly runtime, never set locally). The CSRF
+check itself — `sec-fetch-site`, and Origin having to match *something*
+— is unchanged; only the scheme comparison it depends on is now
+proxy-aware. A malformed/multi-value `X-Forwarded-Proto` falls back to
+the internal URL's own scheme rather than being trusted outright.
+
+New `spec/same-origin.test.ts`: pure unit tests, no DB import, no live
+server — direct HTTP/HTTPS, the real Fly HTTP-internal/HTTPS-Origin case
+that was broken, wrong hostname/port still rejected even with a
+correctly-forwarded scheme, `sec-fetch-site` cross-site/same-site
+rejection, `X-Forwarded-Proto` ignored entirely off Fly, a malformed
+forwarded-proto value falling back safely, and `X-Forwarded-Host` never
+trusted for the hostname match.
+
+Verified: `pnpm typecheck` and the full `pnpm test` suite (188 tests)
+against a fresh isolated instance on port 8097. Root's own `:8094` QA
+server was never touched; no DB schema change, no API call, no secret
+read, no push/deploy from this session. Root will push, redeploy, and
+rerun the HTTPS smoke script before the final ship claim — that smoke
+result, not this local verification alone, is what settles it.
