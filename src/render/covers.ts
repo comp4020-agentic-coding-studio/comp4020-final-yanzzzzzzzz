@@ -1,17 +1,21 @@
 import { asset } from "./asset.ts";
 
-// Only the three puzzles stable enough to have ever gotten a dedicated
-// commission (see ASSET_LICENSES.md for the generation prompts) get their
-// own cover — matched by each puzzle's stable `slug`
-// (src/data/puzzles.ts/reconcileSeedPuzzles()), never by title text, which
-// can be reworded without the puzzle becoming a "different" case. Every
-// other case — the remaining five built-ins, and any player-authored shared
-// puzzle — uses the same original archive-desk photograph as a shared cover,
+// Every one of the eight built-in puzzles has its own dedicated commission
+// (see ASSET_LICENSES.md for the generation prompts) — matched by each
+// puzzle's stable `slug` (src/data/puzzles.ts/reconcileSeedPuzzles()), never
+// by title text, which can be reworded without the puzzle becoming a
+// "different" case. Any player-authored shared puzzle with no cover of its
+// own still uses the same original archive-desk photograph as a fallback,
 // so nothing ever falls back to a broken image or an emoji placeholder.
 const STABLE_COVERS: Record<string, string> = {
   "turtle-soup-bowl": "/images/mystery/case-soup.webp",
   "silent-phone-call": "/images/mystery/case-phone.webp",
   "elevator-routine": "/images/mystery/case-elevator.webp",
+  "desert-parachute": "/images/mystery/case-desert.webp",
+  "avoided-gas-station": "/images/mystery/case-gas-station.webp",
+  "discarded-shoes": "/images/mystery/case-shoes.webp",
+  "man-and-straw": "/images/mystery/case-straw.webp",
+  "dinner-party-soup": "/images/mystery/case-dinner.webp",
 };
 
 const ARCHIVE_COVER = "/images/mystery/case-archive.webp";

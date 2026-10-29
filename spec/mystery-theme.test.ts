@@ -35,20 +35,62 @@ it("case library and card cover images are lazy-loaded with explicit dimensions 
   }
 });
 
-it("maps the three stable built-in puzzles to their own dedicated cover by slug, and everything else to the shared archive cover", async () => {
-  const soup = await (await fetch(new URL("/cases?q=turtle", baseUrl))).text();
-  expect(soup).toContain("/images/mystery/case-soup.webp");
+it("maps all eight built-in puzzles to their own unique dedicated cover by slug", async () => {
+  const BUILT_IN_COVERS: [query: string, cover: string][] = [
+    ["turtle", "case-soup.webp"],
+    ["silent", "case-phone.webp"],
+    ["elevator", "case-elevator.webp"],
+    ["desert", "case-desert.webp"],
+    ["gas station", "case-gas-station.webp"],
+    ["discarded shoes", "case-shoes.webp"],
+    ["straw", "case-straw.webp"],
+    ["dinner party", "case-dinner.webp"],
+  ];
 
-  const phone = await (await fetch(new URL("/cases?q=silent", baseUrl))).text();
-  expect(phone).toContain("/images/mystery/case-phone.webp");
+  const covers = new Set<string>();
+  for (const [query, cover] of BUILT_IN_COVERS) {
+    const html = await (await fetch(new URL(`/cases?q=${encodeURIComponent(query)}`, baseUrl))).text();
+    expect(html, `?q=${query} should show ${cover}`).toContain(`/images/mystery/${cover}`);
+    covers.add(cover);
+  }
+  // Every built-in puzzle's own commission is a distinct file — none of the
+  // eight accidentally share a cover (which would defeat the point of
+  // commissioning eight separate images).
+  expect(covers.size).toBe(BUILT_IN_COVERS.length);
 
-  const elevator = await (await fetch(new URL("/cases?q=elevator", baseUrl))).text();
-  expect(elevator).toContain("/images/mystery/case-elevator.webp");
+  // Each dedicated cover actually resolves as a real, small image, not a
+  // 404 placeholder or an oversized file left over from the source PNG.
+  for (const [, cover] of BUILT_IN_COVERS) {
+    const res = await fetch(new URL(`/images/mystery/${cover}`, baseUrl));
+    expect(res.status, `${cover} should be served`).toBe(200);
+    const bytes = await res.arrayBuffer();
+    expect(bytes.byteLength, `${cover} should be a compressed derivative, not the multi-MB source`).toBeLessThan(
+      500 * 1024,
+    );
+  }
+});
 
-  // A built-in with no dedicated commission falls back to the shared cover,
-  // never a broken image or an emoji in its place.
-  const dinner = await (await fetch(new URL("/cases?q=dinner", baseUrl))).text();
-  expect(dinner).toContain("/images/mystery/case-archive.webp");
+it("a built-in with no dedicated commission would fall back to the shared archive cover, never a broken image", async () => {
+  // All eight built-ins now have dedicated covers (checked above); this
+  // documents the fallback path itself still exists and still works for the
+  // only case that can still hit it — a player-authored shared puzzle with
+  // no uploaded cover of its own.
+  const title = `No-Cover Fallback Case ${Date.now()}`;
+  await fetch(new URL("/rooms", baseUrl), {
+    method: "POST",
+    headers: { "content-type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      mode: "author",
+      title,
+      premise: `${title} premise.`,
+      solution: `${title} solution.`,
+      shared: "on",
+    }),
+    redirect: "manual",
+  });
+  const html = await (await fetch(new URL(`/cases?q=${encodeURIComponent(title)}`, baseUrl))).text();
+  expect(html).toContain(title);
+  expect(html).toContain("/images/mystery/case-archive.webp");
 });
 
 it("the case library's All/Built-in/Player-created filter actually filters, not just labels", async () => {

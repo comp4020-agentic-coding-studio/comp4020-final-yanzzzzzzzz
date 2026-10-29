@@ -52,16 +52,21 @@ async function heroDerivatives() {
   console.log("wrote case-archive.webp");
 }
 
-// Dedicated covers for the three puzzles stable enough to deserve their own
-// art (matched by the puzzle's own `slug`, not by filename or title text,
-// the same stability guarantee src/db.ts's reconcileSeedPuzzles() already
-// relies on elsewhere). Each entry here is inert until its source file
-// actually exists — re-running this script after Codex writes
-// case-soup.png etc. is what activates it, nothing else needs to change.
+// Dedicated covers for all eight built-in puzzles (matched by the puzzle's
+// own `slug`, not by filename or title text, the same stability guarantee
+// src/db.ts's reconcileSeedPuzzles() already relies on elsewhere). Each
+// entry here is inert until its source file actually exists — re-running
+// this script after Codex writes case-soup.png etc. is what activates it,
+// nothing else needs to change.
 const STABLE_COVERS = [
   { src: "case-soup.png", out: "case-soup.webp" },
   { src: "case-phone.png", out: "case-phone.webp" },
   { src: "case-elevator.png", out: "case-elevator.webp" },
+  { src: "case-desert.png", out: "case-desert.webp" },
+  { src: "case-gas-station.png", out: "case-gas-station.webp" },
+  { src: "case-shoes.png", out: "case-shoes.webp" },
+  { src: "case-straw.png", out: "case-straw.webp" },
+  { src: "case-dinner.png", out: "case-dinner.webp" },
 ];
 
 async function stableCovers() {
