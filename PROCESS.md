@@ -2574,3 +2574,71 @@ local only, not pushed, per this session's explicit local-changes-only
 instruction — this overrides the repo's standing commit-and-push-immediately
 rule for this session specifically, same as the instruction that originally
 lifted it back (see the entry above this one).
+
+## Pushing the Gemini migration, and the real-key gap it exposed
+
+With explicit authorization to push/deploy and run small real-API tests
+(scope this repo's standing rules otherwise reserve for the account that
+owns the Fly app and its secrets), the local-only Gemini-migration commits
+from the previous entry were pushed:
+`31e6b06..fad6e9e` went to `origin/main`, and the deploy succeeded — Fly
+reports the machine healthy post-deploy. Before deploying, `/data/app.db`
+was backed up to `/data/app-before-community-1793234847117.db`; its
+integrity was checked and it held 4 rooms / 12 entries, consistent with the
+pre-deploy state.
+
+A real browser test then created room `LLPKT` ("The Elevator Routine") and
+asked it a real question — "Is he too short to reach the button for the
+tenth floor?" — which came back as a credentials failure, not a judged
+answer. One diagnostic request was made directly to Google's endpoint from
+the Fly machine using the deploy's existing `GEMINI_API_KEY` env var (no key
+value read out or printed, by anyone, at any point): it returned HTTP 401
+`UNAUTHENTICATED` — `API key not valid. Please pass a valid API key.` —
+with reason `ACCESS_TOKEN_TYPE_UNSUPPORTED`. That reading points at the key
+itself (wrong value, wrong project, or a key type the REST
+`generateContent` endpoint doesn't accept), not at this repo's request-
+building code, which is already covered by `spec/gemini-judge.test.ts`'s
+contract tests against a stubbed `fetch`. No further live calls were made
+once this was confirmed — the standing rule against spending a finite quota
+chasing a problem retrying can't fix applies here too, even manually. The
+deployed key needs re-saving with a valid value before any real semantic
+test of the judge (does `gemini-3.5-flash-lite` actually judge a 海龟汤
+question the way a human would) can run; that remains exactly as
+unverified as the previous entry already recorded it, just now with a
+concrete, diagnosed reason why, rather than "not yet tried."
+
+### A second, unrelated bug found during that same real-browser pass
+
+The same manual pass also exercised "Write your own" with no cover image
+selected, in an actual Chromium tab — not through this suite's own
+`FormData.set()`-built requests — and hit `notice=corrupt`. Chromium
+submits an untouched `<input type="file">` as a real multipart part
+(`filename=""`, 0 bytes, `Content-Type: application/octet-stream`), which
+parses to an actual `File` object, not the plain string an absent field
+becomes; `src/routes/rooms.ts` treated any `File` instance as "a cover was
+uploaded," handed that empty sentinel to `processCoverUpload()`, and lost
+every other field the author had typed when sharp's decode failed on it.
+Root-caused by hand-building that exact multipart body in isolation and
+checking Node's own `FormData` parser confirmed the same File(name="",
+size=0) shape — not guessed from the symptom. Fixed in
+[`96c4332`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-yanzzzzzzzz/commit/96c4332):
+the "field is a File" check now excludes exactly that empty sentinel (name
+`""` and size `0`), so a real upload — including a genuinely bad or
+zero-byte *named* file — still goes through the existing too-small/corrupt/
+pixel-limit validation unchanged; nothing broadens what counts as an
+acceptable cover. A regression test was added to
+`spec/cover-upload.test.ts` that hand-builds the same empty-sentinel
+multipart body (the only test in that file that doesn't use
+`FormData.set()`, precisely because `set()` can't produce this shape) and
+asserts the room is created with its text fields intact and the archive
+fallback cover, not `notice=corrupt`.
+
+Verified against the isolated local server on port 8089 (its own
+`.data-test-8089/` `DATA_DIR`, `ALLOW_MOCK_JUDGE=1`, started separately
+before this fix work began): `pnpm typecheck` clean, `pnpm build` clean
+(`dist/server.js`, 217.2kb), and the full suite passing — 144/144 (143
+pre-existing + 1 new) — including all 14 tests in
+`spec/cover-upload.test.ts`. This fix commit is local only, not pushed or
+deployed by this session — pushing/deploying it is the next step, to be
+done under the same real-access authorization as the Gemini-migration push
+above, not by this session.
