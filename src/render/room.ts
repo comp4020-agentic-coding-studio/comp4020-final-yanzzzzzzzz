@@ -109,17 +109,46 @@ function systemEntryHtml(entry: QaEntry): string {
   return `<li class="entry entry-system${isJudgeReply ? " entry-judge-reply" : ""}" data-id="${entry.id}">${label}${escapeHtml(entry.body)}</li>`;
 }
 
+// A question/guess entry no longer repeats its own verdict inline (see
+// entryHtml below) — the standalone judge-reply system row (inserted right
+// after it by src/routes/rooms.ts, labeled by systemEntryHtml above) is now
+// the ONLY place the verdict/result is shown, avoiding the exact duplicate
+// a screenshot bug report flagged: "Your Partner, Watson: <verdict>" shown
+// both inline in the player's own bubble AND again in a separate Watson
+// bubble right below it.
+//
+// Some genuinely old rows predate that pairing being reliable: an early
+// version of the judge (src/llm.ts, pre-Gemini) could return an empty-string
+// `reply`, in which case src/routes/rooms.ts's `if (verdict.reply)` guard
+// never inserted the system row at all — the verdict then exists ONLY on
+// the question/guess entry itself, with nothing stored anywhere else. For
+// exactly that case (checked by looking at the very next transcript row,
+// matching how these two rows have always been inserted adjacently in
+// order), this synthesizes a standalone Watson bubble from the old inline
+// verdict so that answer isn't silently dropped — never for an entry that
+// already has a real judge-reply row, so no new duplicates are introduced.
+function hasJudgeReplyFollowing(transcript: QaEntry[], index: number): boolean {
+  const next = transcript[index + 1];
+  return !!next && next.kind === "system" && JUDGE_REPLY_TEXTS.has(next.body);
+}
+
+function synthesizedWatsonReplyHtml(entry: QaEntry): string {
+  const verdictLabel = entry.verdict ? (VERDICT_LABEL[entry.verdict] ?? entry.verdict) : "…";
+  return `<li class="entry entry-system entry-judge-reply entry-judge-reply-fallback" data-id="${entry.id}-watson-fallback">
+    <img src="${escapeHtml(WATSON_AVATAR)}" alt="" width="20" height="20" class="avatar-chip" /> <span class="entry-label">${escapeHtml(JUDGE_DISPLAY_NAME)}</span> <strong>${escapeHtml(verdictLabel)}</strong>
+  </li>`;
+}
+
 // Alignment is based on actual session ownership, read fresh per render —
 // never a blanket "every other player is on the right," which would be
 // actively misleading the moment a THIRD person's message showed up (whose
 // is whose?). An entry whose author can't be compared to the viewer (a
 // system/judge row, or one from before sessions were tracked) gets the
 // neutral centered layout below instead of a guessed side.
-function entryHtml(entry: QaEntry, viewerSessionId: string): string {
+function entryHtml(entry: QaEntry, viewerSessionId: string, transcript: QaEntry[], index: number): string {
   if (entry.kind === "system") {
     return systemEntryHtml(entry);
   }
-  const verdictLabel = entry.verdict ? (VERDICT_LABEL[entry.verdict] ?? entry.verdict) : "…";
   const own = entry.session_id !== null && entry.session_id === viewerSessionId;
   const sideClass = own ? " entry-own" : " entry-other";
   // Resolved from the ENTRY'S OWN author (entry.session_id), never the
@@ -134,15 +163,22 @@ function entryHtml(entry: QaEntry, viewerSessionId: string): string {
   const avatarImg = avatarUrl
     ? `<img src="${escapeHtml(avatarUrl)}" alt="" width="24" height="24" class="avatar-chip" data-author-session-id="${escapeHtml(entry.session_id ?? "")}" />`
     : "";
-  return `<li class="entry entry-${entry.kind}${sideClass}" data-id="${entry.id}">
+  const liHtml = `<li class="entry entry-${entry.kind}${sideClass}" data-id="${entry.id}">
     <p class="entry-meta">
       ${avatarImg}
       <span class="entry-label">${escapeHtml(entry.label ? formatAutoLabel(entry.label) : "Mystery Detective")}</span>
       <span class="entry-kind-badge">${KIND_BADGE[entry.kind]}</span>
     </p>
     <p class="entry-question">${escapeHtml(entry.body)}</p>
-    <p class="entry-verdict">${escapeHtml(JUDGE_DISPLAY_NAME)}: <strong>${escapeHtml(verdictLabel)}</strong></p>
   </li>`;
+  // Historical-fallback: only when this entry has a verdict but no
+  // standalone judge-reply row follows it (see comment above
+  // hasJudgeReplyFollowing) — never when a real judge-reply row already
+  // exists, so nothing is duplicated for ordinary/current entries.
+  if (entry.verdict && !hasJudgeReplyFollowing(transcript, index)) {
+    return `${liHtml}\n${synthesizedWatsonReplyHtml(entry)}`;
+  }
+  return liHtml;
 }
 
 function askFormHtml(room: Room, isAuthor: boolean): string {
@@ -224,7 +260,7 @@ export function roomPage(args: {
         <p class="judging" id="judging-status" role="status" hidden></p>
 
         <ul class="transcript" id="transcript">
-          ${transcript.map((e) => entryHtml(e, viewerSessionId)).join("\n")}
+          ${transcript.map((e, i) => entryHtml(e, viewerSessionId, transcript, i)).join("\n")}
         </ul>
 
         ${solved || waiting ? "" : askFormHtml(room, isAuthor)}

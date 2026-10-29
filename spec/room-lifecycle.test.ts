@@ -238,6 +238,51 @@ it("labels a judge reply with Watson's display name, but never a plain room noti
   expect(judgeReply).toContain("Your Partner, Watson");
 });
 
+// Regression test for a real duplicate-verdict bug found from a screenshot:
+// the player's own question/guess bubble used to ALSO inline-render "Your
+// Partner, Watson: <verdict>" inside itself, on top of the separate,
+// standalone judge-reply bubble (its own avatar/name/result) src/routes/
+// rooms.ts already inserts as its own row. Asserts both the SSR path (this
+// fetch of the room page) and the live/SSE path (public/client.js's
+// renderEntry — exercised indirectly here since the SSR transcript and the
+// live-appended transcript share the exact same entry data shape and the
+// same client.js rendering function for every subsequent page load) show
+// the verdict/result exactly once per question.
+it("shows a question's verdict exactly once — in Watson's own reply bubble, never duplicated inline in the player's bubble", async () => {
+  const create = await fetch(new URL("/rooms", baseUrl), {
+    method: "POST",
+    headers: { "content-type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      mode: "author",
+      title: "No Duplicate Verdict Case",
+      premise: "A premise for testing duplication.",
+      solution: "A specific unmistakable no-duplicate solution phrase.",
+    }),
+    redirect: "manual",
+  });
+  const code = (create.headers.get("location") ?? "").split("/").pop() ?? "";
+  const cookie = parseCookie(create.headers.getSetCookie());
+  await fetch(new URL(`/rooms/${code}/start`, baseUrl), { method: "POST", headers: { cookie }, redirect: "manual" });
+
+  await fetch(new URL(`/rooms/${code}/ask`, baseUrl), {
+    method: "POST",
+    headers: { cookie, "content-type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({ question: "is it a duplication test", kind: "question" }),
+  });
+
+  const html = await (await fetch(new URL(`/rooms/${code}`, baseUrl), { headers: { cookie } })).text();
+  const entries = [...html.matchAll(/<li class="entry[^>]*>[\s\S]*?<\/li>/g)].map((m) => m[0]);
+
+  const questionEntry = entries.find((e) => e.includes("is it a duplication test"));
+  expect(questionEntry, "the player's own question bubble should be present").toBeTruthy();
+  expect(questionEntry).not.toContain("Your Partner, Watson");
+  expect(questionEntry).not.toContain("entry-verdict");
+
+  const judgeReplies = entries.filter((e) => e.includes("entry-judge-reply"));
+  expect(judgeReplies, "exactly one standalone Watson reply bubble should exist for this question").toHaveLength(1);
+  expect(judgeReplies[0]).toContain("Your Partner, Watson");
+});
+
 it("only lists a shared authored puzzle for other sessions to pick, not a private one", async () => {
   const sharedTitle = `Shared Case ${Date.now()}`;
   const privateTitle = `Private Case ${Date.now()}`;

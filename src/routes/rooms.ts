@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import { streamSSE } from "hono/streaming";
 import { multipartBodyLimit } from "../body-limit.ts";
+import { isLegacyJudgeConfigNotice } from "../judge-notices.ts";
 import {
   canViewPuzzleCover,
   countParticipants,
@@ -271,7 +272,9 @@ rooms.get("/rooms/:code", (c) => {
   const sessionId = getOrCreateSessionId(c);
   const label = displayLabel(room.id, sessionId);
   const profile = getProfile(sessionId);
-  const transcript = getTranscript(room.id);
+  const transcript = getTranscript(room.id).filter(
+    (entry) => !(entry.kind === "system" && isLegacyJudgeConfigNotice(entry.body)),
+  );
   const notice = NOTICES[c.req.query("notice") ?? ""];
 
   const onlineCount = connectionCount(room.id);
@@ -437,13 +440,12 @@ rooms.post("/rooms/:code/ask", async (c) => {
     broadcast(room.id, Date.now(), { label, kind }, "judging");
 
     // Checked before calling judge(), not inferred from its return value: a
-    // misconfigured deploy (no GEMINI_API_KEY, mock not explicitly allowed)
+    // misconfigured deploy (no judge API key, mock not explicitly allowed)
     // is a standing, operator-fixable condition, not the same thing as a
-    // single slow/failed Gemini call — the two need different wording so
+    // single slow/failed judge call — the two need different wording so
     // "the judge timed out, try again" isn't shown for a problem retrying
     // can't fix.
-    const unavailableMessage =
-      "The AI judge isn't configured on this deploy (no GEMINI_API_KEY) — this case can't be judged right now. See README.md's \"Running locally\" / ops notes.";
+    const unavailableMessage = "Watson is unavailable right now. Please try again later.";
     if (judgeAvailability() === "unavailable") {
       const entry = insertEntry({
         roomId: room.id,
@@ -612,6 +614,7 @@ rooms.get("/rooms/:code/stream", (c) => {
     });
 
     for (const entry of getTranscript(room.id, afterId)) {
+      if (entry.kind === "system" && isLegacyJudgeConfigNotice(entry.body)) continue;
       await stream.writeSSE({ id: String(entry.id), data: JSON.stringify(entry) });
     }
 

@@ -11,11 +11,9 @@ it("serves a short player-facing /about page, distinct from the technical /readm
   const html = await res.text();
 
   expect(html).toContain("About Turtle Soup");
-  expect(html).toContain("Start a new case");
-  expect(html).toContain("Back to lobby");
+  expect(html).toContain("Read the scene");
+  expect(html).toContain("Solve together");
   expect(html).toContain("horror or graphic content");
-  // Links to the technical doc rather than inlining it.
-  expect(html).toContain('href="/readme/"');
 
   for (const devDetail of ["SQLite", "Fly.io", "fly.toml", "Gemini", "Dockerfile", "PROCESS.md", "/data"]) {
     expect(html, `/about should not mention "${devDetail}"`).not.toContain(devDetail);

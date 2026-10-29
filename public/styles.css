@@ -1729,49 +1729,36 @@ textarea:focus-visible {
   width: auto;
 }
 
-.profile form {
+/* Profile card: compact, single-column, max 58rem — plain --bg navy with
+   --fg cream text, which already clears 4.5:1 (same pairing the rest of the
+   dark theme uses), so no paper-card treatment is needed here. */
+.profile-card {
+  max-width: 58rem;
+  margin: 0 auto;
+}
+
+.profile-heading {
+  color: var(--fg);
+}
+
+.profile-intro {
+  color: var(--fg-dim);
+}
+
+.profile-notice {
+  color: var(--fg);
+}
+
+.profile-avatar-area {
   display: flex;
   flex-direction: column;
-  gap: 0.75rem;
-  max-width: 28rem;
-}
-
-.avatar-picker {
-  display: flex;
-  flex-wrap: wrap;
+  align-items: flex-start;
   gap: 0.5rem;
-  border: 1px solid var(--border);
-  border-radius: 0.5rem;
-  padding: 0.75rem;
-}
-
-.avatar-option {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.3rem;
-  padding: 0.4rem 0.7rem;
-  border: 1px solid var(--border);
-  border-radius: 0.4rem;
-  cursor: pointer;
-  font-size: 1.2rem;
-  min-height: 2.5rem;
-}
-
-.avatar-option:has(input:checked) {
-  background: color-mix(in srgb, var(--accent) 18%, var(--bg));
-  border-color: var(--accent);
-}
-
-.avatar-option-image img {
-  width: 32px;
-  height: 32px;
-  border-radius: 50%;
-  object-fit: cover;
-  display: block;
+  margin: 1rem 0 1.5rem;
 }
 
 .profile-avatar-current {
-  margin: 1rem 0;
+  margin: 0;
 }
 
 .profile-avatar-preview,
@@ -1795,9 +1782,59 @@ textarea:focus-visible {
 .avatar-upload-form {
   display: flex;
   flex-direction: column;
+  align-items: flex-start;
   gap: 0.5rem;
   max-width: 28rem;
-  margin-bottom: 1.25rem;
+}
+
+.profile-field-label {
+  color: var(--fg);
+}
+
+.profile-upload-field {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  flex-wrap: wrap;
+}
+
+.profile-upload-choose,
+.profile-upload-submit,
+.profile-upload-remove {
+  width: fit-content;
+}
+
+.profile-upload-status {
+  font-size: 0.85rem;
+  color: var(--fg-dim);
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.profile-upload-hint {
+  margin: 0;
+  font-size: 0.8rem;
+  color: var(--fg-dim);
+}
+
+.profile-upload-remove {
+  background: transparent;
+  color: var(--fg);
+  border: 1px solid var(--border);
+  padding: 0.35rem 0.7rem;
+  min-height: 0;
+  font-size: 0.85rem;
+}
+
+.profile-upload-remove:hover {
+  background: color-mix(in srgb, var(--fg) 8%, transparent);
+}
+
+.profile-text-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  max-width: 28rem;
 }
 
 .profile-stats {
@@ -1983,4 +2020,94 @@ textarea:focus-visible {
   padding: 1rem;
   background: var(--bg-sunken);
   border-radius: 0.4rem;
+}
+
+/* ---------- About page ----------
+   Dedicated .about-* classes so this page never bleeds into the hero/form
+   styles shared by home and other pages. */
+
+.about {
+  max-width: 64rem;
+  margin: 0 auto;
+  padding: 2rem 1.25rem 3rem;
+}
+
+.about-intro {
+  font-size: 1.1rem;
+  color: var(--fg-dim);
+  max-width: 42rem;
+  margin: 0 0 2rem;
+}
+
+.about-steps {
+  list-style: none;
+  margin: 0 0 2rem;
+  padding: 0;
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1.25rem;
+}
+
+@media (min-width: 40rem) {
+  .about-steps {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+.about-steps li {
+  padding: 1.25rem;
+  border: 1px solid var(--gold-line);
+  border-radius: 0.6rem;
+  background: var(--bg-raised);
+}
+
+.about-steps h3 {
+  margin: 0.6rem 0 0.4rem;
+  font-size: 1.05rem;
+}
+
+.about-steps p {
+  margin: 0;
+  font-size: 0.92rem;
+  color: var(--fg-dim);
+}
+
+.about-step-number {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  border-radius: 50%;
+  border: 1.5px solid var(--accent);
+  color: var(--accent-bright);
+  font-weight: 700;
+}
+
+.about-note {
+  max-width: 42rem;
+  color: var(--fg-dim);
+  margin: 0 0 2rem;
+}
+
+.about-warning-block {
+  display: flex;
+  justify-content: center;
+  margin: 0 0 2rem;
+  padding: 1rem 0;
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+}
+
+.about-warning {
+  margin: 0;
+  max-width: 34rem;
+  text-align: center;
+  color: #e8a3a3;
+  font-size: 0.95rem;
+}
+
+.about-credits {
+  max-width: 42rem;
+  color: var(--fg-dim);
 }

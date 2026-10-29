@@ -92,10 +92,12 @@ it("uploading a real avatar image makes it the player's avatar, served as real i
   const profileHtml = await (await fetch(new URL("/profile", baseUrl), { headers: { cookie } })).text();
   const avatarMatch = profileHtml.match(/\/uploads\/avatar\/[0-9a-f-]+\.webp/);
   expect(avatarMatch, "profile page should show the uploaded avatar's URL").toBeTruthy();
-  // The emoji radio is still saved underneath (never silently cleared by
-  // the upload), but the uploaded image is what actually renders as the
-  // current avatar preview.
-  expect(profileHtml).toContain('value="🐢" checked');
+  // The emoji choice is still saved underneath (never silently cleared by
+  // the upload) in the hidden "avatar" field, but the uploaded image is what
+  // actually renders as the current avatar preview; there is no visible
+  // emoji/preset radio picker anymore.
+  expect(profileHtml).toContain('name="avatar" value="🐢"');
+  expect(profileHtml).not.toMatch(/type="radio"[^>]*name="avatar"/);
 
   const imgRes = await fetch(new URL(avatarMatch![0], baseUrl));
   expect(imgRes.status).toBe(200);

@@ -11,7 +11,6 @@
     [...transcript.querySelectorAll(".entry[data-id]")].map((li) => li.dataset.id),
   );
 
-  const VERDICT_LABEL = { yes: "Yes", no: "No", irrelevant: "Irrelevant", correct: "✓ Correct!" };
   const KIND_BADGE = { question: "❓ Question", guess: "🎯 Final guess" };
   // Mirrors src/llm.ts's JUDGE_DISPLAY_NAME — the player-facing name shown
   // on a judge-reply row and the verdict line. Presentation only: the set
@@ -110,7 +109,13 @@
       li.className = `entry entry-system${isJudgeReply ? " entry-judge-reply" : ""}`;
       li.innerHTML = `${isJudgeReply ? `${avatarImgHtml(entry.avatarUrl, 20)}<span class="entry-label">${escapeHtml(JUDGE_DISPLAY_NAME)}</span> ` : ""}${escapeHtml(entry.body)}`;
     } else {
-      const verdictLabel = entry.verdict ? VERDICT_LABEL[entry.verdict] ?? entry.verdict : "…";
+      // No inline "Your Partner, Watson: <verdict>" here — src/routes/
+      // rooms.ts always follows this entry with its own standalone
+      // judge-reply system entry (handled by the `entry.kind === "system"`
+      // branch above), which is the only place the verdict/result is shown
+      // live. Repeating it here would duplicate it, which is exactly the
+      // bug a screenshot report flagged (see src/render/room.ts's matching
+      // SSR fix for the same entry shape).
       const own = entry.session_id != null && entry.session_id === viewerSessionId;
       li.className = `entry entry-${entry.kind} ${own ? "entry-own" : "entry-other"}`;
       li.innerHTML = `
@@ -120,7 +125,6 @@
           <span class="entry-kind-badge">${KIND_BADGE[entry.kind]}</span>
         </p>
         <p class="entry-question">${escapeHtml(entry.body)}</p>
-        <p class="entry-verdict">${escapeHtml(JUDGE_DISPLAY_NAME)}: <strong>${escapeHtml(verdictLabel)}</strong></p>
       `;
     }
     return li;
