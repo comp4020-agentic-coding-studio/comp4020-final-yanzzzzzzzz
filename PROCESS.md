@@ -2946,11 +2946,42 @@ POST, matching the room heartbeat and community-review routes' existing
 guard.
 
 Verified throughout this run: `pnpm typecheck` and the full `pnpm test`
-suite (172 tests passing by the final commit) against isolated local
-servers on ports 8091–8093 — never the root dev server — each with its
-own throwaway `DATA_DIR` and `ALLOW_MOCK_JUDGE=1`, restarted after every
+suite (172 tests passing by `7c4bb13`) against isolated local servers on
+ports 8091–8093 — never the root dev server — each with its own
+throwaway `DATA_DIR` and `ALLOW_MOCK_JUDGE=1`, restarted after every
 source change via a small `node` wrapper script so `APP_URL` could be set
 without relying on inline env-var shell syntax. No push, deploy, API
-call, secret read, or history rewrite happened in this session; root
-reviewed the real browser behavior (the cover chooser, the lobby grid,
-the avatar upload) separately and will push/deploy once satisfied.
+call, secret read, or history rewrite happened in this session.
+
+### Follow-up: root's real-browser QA caught a dropped draft on successful upload
+
+Root ran its own independent server (port 8094) and did the real thing by
+hand: opened the native file chooser, picked `avatar-observer.webp`,
+typed an unsaved nickname ("Avatar QA") and bio ("Avatar upload draft
+verification") into the separate nickname/bio form, then submitted the
+avatar upload. The upload itself worked — the image persisted — but the
+redirect to `/profile?saved=1` silently dropped both unsaved text fields,
+because the draft-preservation query params `7c4bb13` added were only
+ever attached to the rejection/no-file-chosen redirects, never the
+success path, which is the one a working upload actually takes every
+time.
+
+Fixed in
+[`148c443`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-yanzzzzzzzz/commit/148c4432b1b32c8b0e4fa8f31f3f3a04d1e21a68):
+the draft query string is now built once per request and attached to
+every redirect `POST /profile/avatar` and `POST /profile/avatar/remove`
+can produce, success included. Caught and fixed in the same pass: the old
+check used `body.draftNickname` truthiness, which would have silently
+dropped an explicitly-cleared field (a saved nickname blanked out, then
+an avatar uploaded before clicking Save) and reverted the display to the
+old saved text — switched to an `in body` presence check so an explicit
+empty string still round-trips. Draft values stay redisplay-only; nothing
+from them is ever written to the database (confirmed by a test).
+
+Verified against a fresh isolated instance on port 8095 — root's own
+independent QA server on 8094 was left untouched throughout. `pnpm
+typecheck` and the full `pnpm test` suite (175 tests) passed. Root's
+real-browser avatar-chooser-and-successful-upload check is the actual
+proof this fix addresses; root will push and deploy once satisfied with
+that verification. Still no push, deploy, API call, secret read, or
+history rewrite from this session.
