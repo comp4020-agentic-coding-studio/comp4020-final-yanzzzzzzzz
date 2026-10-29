@@ -574,27 +574,42 @@ it("uploading an avatar while connected to a room's SSE stream broadcasts a pres
     }
   }
 
-  await nextEvent(); // this connection's own initial "presence" broadcast
+  // Drain whatever initial events this connection sends (a room-snapshot may
+  // arrive before this connection's own initial "presence" broadcast) until
+  // we've seen the presence broadcast, so the two events read below are only
+  // the ones caused by the upload itself.
+  const timeoutMs = 5000;
+  const deadline = Date.now() + timeoutMs;
+  for (;;) {
+    const ev = await nextEvent();
+    if (ev.event === "presence") break;
+    if (Date.now() > deadline) throw new Error("timed out waiting for initial presence event");
+  }
 
-  const jpeg = await makeAvatarJpeg({ r: 15, g: 200, b: 15 });
-  const form = new FormData();
-  form.set("avatarFile", new Blob([jpeg], { type: "image/jpeg" }), "live.jpg");
-  await fetch(new URL("/profile/avatar", baseUrl), { method: "POST", headers: { cookie }, body: form });
+  try {
+    const jpeg = await makeAvatarJpeg({ r: 15, g: 200, b: 15 });
+    const form = new FormData();
+    form.set("avatarFile", new Blob([jpeg], { type: "image/jpeg" }), "live.jpg");
+    await fetch(new URL("/profile/avatar", baseUrl), { method: "POST", headers: { cookie }, body: form });
 
-  const first = await nextEvent();
-  const second = await nextEvent();
-  const events = [first, second];
-  const presence = events.find((e) => e.event === "presence");
-  const avatarUpdate = events.find((e) => e.event === "avatar-update");
-  expect(presence, "an avatar change should re-broadcast presence").toBeTruthy();
-  expect(avatarUpdate, "an avatar change should broadcast a targeted avatar-update event").toBeTruthy();
+    let presence: { event: string; data: string } | undefined;
+    let avatarUpdate: { event: string; data: string } | undefined;
+    const eventDeadline = Date.now() + timeoutMs;
+    while ((!presence || !avatarUpdate) && Date.now() < eventDeadline) {
+      const ev = await nextEvent();
+      if (ev.event === "presence") presence = ev;
+      else if (ev.event === "avatar-update") avatarUpdate = ev;
+    }
+    expect(presence, "an avatar change should re-broadcast presence").toBeTruthy();
+    expect(avatarUpdate, "an avatar change should broadcast a targeted avatar-update event").toBeTruthy();
 
-  const { sessionId, avatarUrl } = JSON.parse(avatarUpdate!.data);
-  expect(avatarUrl).toMatch(/\/uploads\/avatar\/[0-9a-f-]+\.webp/);
-  expect(typeof sessionId).toBe("string");
+    const { sessionId, avatarUrl } = JSON.parse(avatarUpdate!.data);
+    expect(avatarUrl).toMatch(/\/uploads\/avatar\/[0-9a-f-]+\.webp/);
+    expect(typeof sessionId).toBe("string");
 
-  const members = JSON.parse(presence!.data).members as { avatarUrl: string }[];
-  expect(members.some((m) => m.avatarUrl === avatarUrl)).toBe(true);
-
-  streamController.abort();
+    const members = JSON.parse(presence!.data).members as { avatarUrl: string }[];
+    expect(members.some((m) => m.avatarUrl === avatarUrl)).toBe(true);
+  } finally {
+    streamController.abort();
+  }
 });

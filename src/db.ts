@@ -237,6 +237,14 @@ function ensureRoomsHaveWaitingStatus(): void {
 }
 ensureRoomsHaveWaitingStatus();
 
+// Additive, nullable: a host-ended-unsolved room keeps its existing status
+// ('waiting' or 'active' — never 'solved', see guards in src/routes/rooms.ts)
+// and gains closed_at as the one new fact, rather than rebuilding the status
+// CHECK constraint (like ensureRoomsHaveWaitingStatus above) to add a new
+// status value. NULL (every existing room, and every room that simply hasn't
+// been ended) means "not closed" throughout this file and routes/rooms.ts.
+ensureColumn("rooms", "closed_at", "ALTER TABLE rooms ADD COLUMN closed_at TEXT");
+
 // Pre-translation official titles, in SEED_PUZZLES order, from the original
 // English build. Only used once, to backfill `slug` onto rows that predate
 // the slug column entirely — see reconcileSeedPuzzles() below.
@@ -341,6 +349,10 @@ export interface Room {
   host_session_id: string | null;
   status: "waiting" | "active" | "solved";
   created_at: string;
+  // Set once, by the host ending an unsolved investigation (POST
+  // /rooms/:code/end) — never alongside status 'solved'. NULL means never
+  // ended early.
+  closed_at: string | null;
 }
 
 export interface QaEntry {
@@ -516,7 +528,7 @@ function randomCode(): string {
   return code;
 }
 
-const ROOM_COLUMNS = "id, code, name, puzzle_id, host_session_id, status, created_at";
+const ROOM_COLUMNS = "id, code, name, puzzle_id, host_session_id, status, created_at, closed_at";
 
 // Every room starts 'waiting' (the DDL default) — someone has to be the
 // host before anyone can start it, so creation and the host assignment
@@ -538,12 +550,20 @@ export function createRoom(puzzleId: string, opts: { name: string | null; hostSe
   return db.prepare(`SELECT ${ROOM_COLUMNS} FROM rooms WHERE id = ?`).get(id) as unknown as Room;
 }
 
+// Guarded against closed_at, not just status: a host-ended room keeps its
+// pre-end status ('waiting' or 'active') forever, so the plain status check
+// alone would let a closed 'waiting' room start again.
 export function startRoom(roomId: string): void {
-  db.prepare("UPDATE rooms SET status = 'active' WHERE id = ? AND status = 'waiting'").run(roomId);
+  db.prepare(
+    "UPDATE rooms SET status = 'active' WHERE id = ? AND status = 'waiting' AND closed_at IS NULL",
+  ).run(roomId);
 }
 
 export function transferHost(roomId: string, toSessionId: string): void {
-  db.prepare("UPDATE rooms SET host_session_id = ? WHERE id = ?").run(toSessionId, roomId);
+  db.prepare("UPDATE rooms SET host_session_id = ? WHERE id = ? AND closed_at IS NULL").run(
+    toSessionId,
+    roomId,
+  );
 }
 
 export function listActiveRooms(limit = 20): LobbyRoom[] {
@@ -552,7 +572,7 @@ export function listActiveRooms(limit = 20): LobbyRoom[] {
       `SELECT r.id, r.code, r.name, p.title, p.slug, p.cover_path, r.host_session_id, r.status
        FROM rooms r
        JOIN puzzles p ON p.id = r.puzzle_id
-       WHERE r.status IN ('waiting', 'active')
+       WHERE r.status IN ('waiting', 'active') AND r.closed_at IS NULL
        ORDER BY r.created_at DESC
        LIMIT ?`,
     )
@@ -569,7 +589,7 @@ export function getLobbyCard(roomId: string): LobbyRoom | undefined {
       `SELECT r.id, r.code, r.name, p.title, p.slug, p.cover_path, r.host_session_id, r.status
        FROM rooms r
        JOIN puzzles p ON p.id = r.puzzle_id
-       WHERE r.id = ? AND r.status IN ('waiting', 'active')`,
+       WHERE r.id = ? AND r.status IN ('waiting', 'active') AND r.closed_at IS NULL`,
     )
     .get(roomId) as LobbyRoom | undefined;
 }
@@ -597,7 +617,7 @@ export function getListedRoomCoverPath(code: string): string | null | undefined 
       `SELECT p.cover_path AS coverPath
        FROM rooms r
        JOIN puzzles p ON p.id = r.puzzle_id
-       WHERE r.code = ? AND r.status IN ('waiting', 'active')`,
+       WHERE r.code = ? AND r.status IN ('waiting', 'active') AND r.closed_at IS NULL`,
     )
     .get(code.toUpperCase()) as { coverPath: string | null } | undefined;
   return row?.coverPath;
@@ -780,8 +800,25 @@ export function insertEntry(entry: {
     .get(result.lastInsertRowid) as unknown as QaEntry;
 }
 
+// closed_at IS NULL guards against a room the host just ended becoming
+// 'solved' anyway — see POST /rooms/:code/ask's own lock-held recheck in
+// routes/rooms.ts, which re-reads the room before calling this but closes
+// the same race window this WHERE clause closes at the SQL layer too.
 export function markSolved(roomId: string): void {
-  db.prepare("UPDATE rooms SET status = 'solved' WHERE id = ?").run(roomId);
+  db.prepare("UPDATE rooms SET status = 'solved' WHERE id = ? AND closed_at IS NULL").run(roomId);
+}
+
+// Marks a room closed (host-ended-unsolved) exactly once — `closed_at IS
+// NULL` makes a second call a no-op, and a room already 'solved' is never
+// passed here (routes/rooms.ts's POST /rooms/:code/end rejects a terminal
+// room before this runs). Returns whether this call was the one that
+// actually closed it, so the caller can post the "ended" system notice only
+// once, under the same ask-lock markSolved's own callers already hold.
+export function markClosed(roomId: string): boolean {
+  const result = db
+    .prepare("UPDATE rooms SET closed_at = datetime('now') WHERE id = ? AND closed_at IS NULL AND status != 'solved'")
+    .run(roomId);
+  return result.changes > 0;
 }
 
 const REASONING_TOTAL_KEY = "reasoning_total_seconds";
@@ -844,10 +881,10 @@ export function recordHeartbeat(
   if (!isParticipant(roomId, sessionId)) {
     return { ok: false, reason: "not-participant", credited: false };
   }
-  const room = db.prepare("SELECT status FROM rooms WHERE id = ?").get(roomId) as
-    | { status: string }
+  const room = db.prepare("SELECT status, closed_at FROM rooms WHERE id = ?").get(roomId) as
+    | { status: string; closed_at: string | null }
     | undefined;
-  if (!room || room.status !== "active") {
+  if (!room || room.status !== "active" || room.closed_at !== null) {
     return { ok: false, reason: "not-active", credited: false };
   }
 

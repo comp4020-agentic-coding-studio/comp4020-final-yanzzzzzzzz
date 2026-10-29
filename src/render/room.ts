@@ -80,6 +80,20 @@ function recapHtml(room: Room, puzzle: Puzzle, transcript: QaEntry[], participan
   </section>`;
 }
 
+// Host-only link to the confirmation page (src/render/room-end.ts), never a
+// direct POST from here — shown only while the case can still actually be
+// ended (not already solved, not already closed), same terminal-state rule
+// recapHtml/closedHtml below are each scoped to their own opposite state.
+function endLinkHtml(room: Room): string {
+  return `<p class="end-investigation"><a href="/rooms/${room.code}/end">End investigation</a></p>`;
+}
+
+function closedHtml(): string {
+  return `<section class="closed-room">
+    <p class="closed-banner">🛑 Investigation ended — unsolved. The host ended this case.</p>
+  </section>`;
+}
+
 function waitingHtml(room: Room, isHost: boolean): string {
   return `<section class="waiting-room">
     ${
@@ -181,6 +195,22 @@ function entryHtml(entry: QaEntry, viewerSessionId: string, transcript: QaEntry[
   return liHtml;
 }
 
+// Splits on a blank line (the only paragraph-break convention a puzzle's
+// premise text actually uses — see src/db.ts's `premise TEXT NOT NULL`,
+// stored as plain text with no markup) so the case-file sidebar can keep
+// whatever paragraph breaks the author wrote, instead of the single
+// escapeHtml()'d block this used to render as — never splits further than
+// that, so a one-paragraph premise still renders as exactly one <p>, not
+// invented "facts" or line-by-line fragments.
+function premiseHtml(premise: string): string {
+  return premise
+    .split(/\n{2,}/)
+    .map((para) => para.trim())
+    .filter(Boolean)
+    .map((para) => `<p>${escapeHtml(para)}</p>`)
+    .join("\n");
+}
+
 function askFormHtml(room: Room, isAuthor: boolean): string {
   return `<form method="post" action="/rooms/${room.code}/ask" id="ask-form">
     <label for="question">Ask a yes/no question${isAuthor ? "" : ", or submit your final guess"}:</label>
@@ -231,45 +261,65 @@ export function roomPage(args: {
     isAuthor,
   } = args;
   const solved = room.status === "solved";
-  const waiting = room.status === "waiting";
+  const closed = Boolean(room.closed_at);
+  const waiting = room.status === "waiting" && !closed;
+  // "Terminal" = nothing can change this room's outcome anymore — a solved
+  // room (recapHtml) or a host-closed one (closedHtml) — so the ask form and
+  // every start/transfer/end control are all gated on this one flag rather
+  // than repeating the solved-or-closed check at each control.
+  const terminal = solved || closed;
   const heading = room.name ? escapeHtml(room.name) : `Case #${room.code}`;
 
   return layout(
     `${room.name ?? `Case ${room.code}`} · Turtle Soup Puzzle Room`,
     `
-    <section class="room" data-room-code="${room.code}" data-room-status="${room.status}" data-last-id="${transcript.at(-1)?.id ?? 0}" data-solved="${solved}" data-host-session-id="${escapeHtml(room.host_session_id ?? "")}" data-viewer-session-id="${escapeHtml(viewerSessionId)}" data-is-host="${isHost}">
-      <div class="room-main">
+    <section class="room" data-room-code="${room.code}" data-room-status="${room.status}" data-last-id="${transcript.at(-1)?.id ?? 0}" data-solved="${solved}" data-closed="${closed}" data-host-session-id="${escapeHtml(room.host_session_id ?? "")}" data-viewer-session-id="${escapeHtml(viewerSessionId)}" data-is-host="${isHost}">
+      <header class="room-header">
         <h1>${heading}</h1>
-        <p class="room-subtitle">
-          playing <strong>${escapeHtml(puzzle.title)}</strong>
-          · <span class="room-code">Code: <code id="room-code-value">${room.code}</code></span>
-        </p>
-        <div class="share-row">
-          <button type="button" class="share-button" id="copy-code-button" data-code="${room.code}">Copy code</button>
-          <button type="button" class="share-button" id="copy-link-button">Copy room link</button>
-          <span class="share-feedback" id="share-feedback" role="status" aria-live="polite"></span>
+        <div class="room-header-row">
+          <p class="room-subtitle">
+            playing <strong>${escapeHtml(puzzle.title)}</strong>
+            · <span class="room-code">Code: <code id="room-code-value">${room.code}</code></span>
+          </p>
+          <div class="share-row">
+            <button type="button" class="share-button" id="copy-code-button" data-code="${room.code}">Copy code</button>
+            <button type="button" class="share-button" id="copy-link-button">Copy room link</button>
+            <span class="share-feedback" id="share-feedback" role="status" aria-live="polite"></span>
+          </div>
+          <p class="online-count" id="online-count">${onlineLabel(onlineCount)}</p>
         </div>
-        <div class="room-cover">
-          <img src="${coverFor(puzzle.slug, puzzle.id, puzzle.cover_path)}" alt="" width="800" height="500" loading="lazy" decoding="async" />
-        </div>
-        <p class="premise">${escapeHtml(puzzle.premise)}</p>
         <p class="connection-status" id="connection-status" role="status" aria-live="polite" hidden></p>
-        ${solved ? recapHtml(room, puzzle, transcript, participants) : ""}
-        ${waiting ? waitingHtml(room, isHost) : ""}
         ${notice ? `<p class="notice" role="status">${escapeHtml(notice)}</p>` : ""}
+      </header>
+
+      <details class="case-file" id="case-file" open>
+        <summary class="case-file-summary">Case file</summary>
+        <div class="case-file-body">
+          <div class="room-cover">
+            <img src="${coverFor(puzzle.slug, puzzle.id, puzzle.cover_path)}" alt="" width="800" height="500" loading="lazy" decoding="async" />
+          </div>
+          <p class="case-eyebrow">Case file / The Scene</p>
+          <h2 class="case-title">${escapeHtml(puzzle.title)}</h2>
+          <div class="premise">${premiseHtml(puzzle.premise)}</div>
+          <p class="whoami">You are <strong>${escapeHtml(label)}</strong></p>
+          ${membersHtml(members, room, isHost && !terminal)}
+          ${isHost && !terminal ? endLinkHtml(room) : ""}
+        </div>
+      </details>
+
+      <div class="room-main">
+        <h2 class="conversation-heading">Conversation</h2>
+        ${solved ? recapHtml(room, puzzle, transcript, participants) : ""}
+        ${closed ? closedHtml() : ""}
+        ${waiting ? waitingHtml(room, isHost) : ""}
         <p class="judging" id="judging-status" role="status" hidden></p>
 
         <ul class="transcript" id="transcript">
           ${transcript.map((e, i) => entryHtml(e, viewerSessionId, transcript, i)).join("\n")}
         </ul>
 
-        ${solved || waiting ? "" : askFormHtml(room, isAuthor)}
+        ${terminal || waiting ? "" : askFormHtml(room, isAuthor)}
       </div>
-      <aside class="room-sidebar">
-        <p class="whoami">You are <strong>${escapeHtml(label)}</strong></p>
-        <p class="online-count" id="online-count">${onlineLabel(onlineCount)}</p>
-        ${membersHtml(members, room, isHost)}
-      </aside>
     </section>
     <script id="initial-transcript" type="application/json">${JSON.stringify(transcript)}</script>
     <script src="${asset("/client.js")}"></script>

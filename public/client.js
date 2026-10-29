@@ -249,6 +249,31 @@
     // now broadcasts a "room-status" event on both actions; reloading here
     // is what actually picks up the new markup.
     source.addEventListener("room-status", handleRoomStatus);
+    // Sent once right after (re)connecting (src/routes/rooms.ts's
+    // /rooms/:code/stream), from a fresh DB read — catches up a tab that was
+    // OFFLINE while the host ended/started/transferred the case, which the
+    // "room-status" broadcast above can never reach (it only reaches a
+    // connection that was already open at the moment of the change). Only
+    // reloads if something this tab's own server-rendered markup already
+    // reflects has actually changed — comparing unconditionally-on-every-
+    // reconnect would reload a tab that reconnected for an ordinary network
+    // blip with nothing new to report, and reloading on every snapshot
+    // without this comparison would loop forever since EventSource
+    // reconnects right after a reload re-sends this same event.
+    source.addEventListener("room-snapshot", (event) => {
+      const snapshot = JSON.parse(event.data);
+      const closedNow = Boolean(snapshot.closedAt);
+      const closedWas = section.dataset.closed === "true";
+      const snapshotHostSessionId = snapshot.hostSessionId ?? "";
+      const renderedHostSessionId = section.dataset.hostSessionId ?? "";
+      if (
+        snapshot.status !== section.dataset.roomStatus ||
+        snapshotHostSessionId !== renderedHostSessionId ||
+        closedNow !== closedWas
+      ) {
+        location.reload();
+      }
+    });
     // Patches every ALREADY-RENDERED transcript row authored by this
     // session (src/routes/rooms.ts's broadcastAvatarUpdate(), fired from
     // routes/profile.ts after an avatar upload/removal/preset change) — the
@@ -271,6 +296,26 @@
   }
 
   connectRoomStream();
+
+  // Server always renders <details id="case-file" open> (correct for the
+  // >=54rem default). On a narrower viewport that default is wrong — this
+  // corrects it once up front, then only re-applies the breakpoint's default
+  // when the viewport actually crosses 54rem (e.g. a rotation or resize),
+  // never on every resize event, so a mobile user who toggles it open isn't
+  // fought back closed by an unrelated resize that stays on the same side of
+  // the breakpoint.
+  (() => {
+    const caseFile = document.getElementById("case-file");
+    if (!caseFile) return;
+    if (typeof window.matchMedia !== "function") return;
+    const query = window.matchMedia("(min-width: 54rem)");
+    let isDesktop = query.matches;
+    caseFile.open = isDesktop;
+    query.addEventListener("change", (event) => {
+      isDesktop = event.matches;
+      caseFile.open = isDesktop;
+    });
+  })();
 
   // Navigating away (e.g. clicking a link) doesn't necessarily tear down an
   // in-flight EventSource right away — the browser may leave it dangling for

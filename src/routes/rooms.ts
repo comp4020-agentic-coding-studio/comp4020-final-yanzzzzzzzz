@@ -19,6 +19,7 @@ import {
   isPuzzleAvailable,
   lastQuestionAt,
   listAvailablePuzzles,
+  markClosed,
   markSolved,
   pickRandomPuzzle,
   recordHeartbeat,
@@ -32,6 +33,7 @@ import { broadcast, connectionCount, listMembers, subscribe } from "../sse.ts";
 import { getOrCreateSessionId } from "../session.ts";
 import { roomPage } from "../render/room.ts";
 import { newRoomPage } from "../render/room-new.ts";
+import { endConfirmPage } from "../render/room-end.ts";
 import { roomNotFoundPage } from "../render/not-found.ts";
 import { broadcastLobbyCardChange, LOBBY_CHANNEL } from "./lobby.ts";
 import { isSameOrigin } from "../same-origin.ts";
@@ -47,6 +49,9 @@ const NOTICES: Record<string, string> = {
   busy: "Someone else in this room just asked — wait a moment and try again.",
   "host-only": "Only the host can do that.",
   "not-started": "This case hasn't started yet — wait for the host.",
+  "end-busy": "Watson is still finishing up — try ending the investigation again in a moment.",
+  "already-over": "This investigation is already over.",
+  "confirm-required": "That didn't look like a confirmed end request — nothing was changed.",
   "author-guess": "You wrote this case — let someone else crack it.",
   "too-long": `That's too long — keep it under ${QUESTION_MAX_LENGTH} characters.`,
   "unavailable-puzzle": "That puzzle isn't available to pick anymore.",
@@ -319,7 +324,7 @@ rooms.post("/rooms/:code/start", (c) => {
   if (sessionId !== room.host_session_id) {
     return c.redirect(`/rooms/${room.code}?notice=host-only`, 303);
   }
-  if (room.status === "waiting") {
+  if (room.status === "waiting" && !room.closed_at) {
     startRoom(room.id);
     // Not displayLabel(): starting the room shouldn't itself register the
     // host as a numbered participant if they haven't actually joined yet.
@@ -355,7 +360,7 @@ rooms.post("/rooms/:code/transfer-host", async (c) => {
   }
   const body = await c.req.parseBody();
   const toSessionId = String(body.toSessionId ?? "");
-  if (toSessionId && toSessionId !== sessionId && isParticipant(room.id, toSessionId)) {
+  if (!room.closed_at && toSessionId && toSessionId !== sessionId && isParticipant(room.id, toSessionId)) {
     transferHost(room.id, toSessionId);
     broadcast(
       room.id,
@@ -368,10 +373,106 @@ rooms.post("/rooms/:code/transfer-host", async (c) => {
   return c.redirect(`/rooms/${room.code}`, 303);
 });
 
+// A plain SSR confirmation page, not a JS confirm() dialog — reachable and
+// usable with JS entirely off, same as every other control in this room.
+// GET-only (no side effects), host-only, and only reachable for a room
+// that's still actually endable — a solved or already-closed room just
+// redirects back to the room page with a plain notice instead of offering a
+// confirmation for an action that can no longer do anything.
+rooms.get("/rooms/:code/end", (c) => {
+  const room = getRoomByCode(c.req.param("code"));
+  if (!room) return c.notFound();
+  const sessionId = getOrCreateSessionId(c);
+  if (sessionId !== room.host_session_id) {
+    return c.redirect(`/rooms/${room.code}?notice=host-only`, 303);
+  }
+  if (room.status === "solved" || room.closed_at) {
+    return c.redirect(`/rooms/${room.code}?notice=already-over`, 303);
+  }
+  const profile = getProfile(sessionId);
+  return c.html(endConfirmPage(room, profile));
+});
+
+// Ends an unsolved investigation for everyone — the host's own "give up and
+// close this case" action, distinct from a correct guess (markSolved): the
+// room's status is left exactly as it was ('waiting' or 'active'), with
+// closed_at as the one new fact recording that it's over. Guarded the same
+// way a correct guess already is: same-origin (a write with a real side
+// effect, same class as the heartbeat/profile-save routes that already
+// require it), host-only, and an explicit confirm=end field so a prefetched
+// or accidentally-followed link can never end a case — only an actual
+// confirmed POST from the confirmation page above can.
+rooms.post("/rooms/:code/end", async (c) => {
+  if (!isSameOrigin(c)) return c.body(null, 403);
+  const room = getRoomByCode(c.req.param("code"));
+  if (!room) return c.notFound();
+  const sessionId = getOrCreateSessionId(c);
+  if (sessionId !== room.host_session_id) {
+    return c.redirect(`/rooms/${room.code}?notice=host-only`, 303);
+  }
+  if (room.status === "solved" || room.closed_at) {
+    return c.redirect(`/rooms/${room.code}?notice=already-over`, 303);
+  }
+
+  const body = await c.req.parseBody();
+  if (body.confirm !== "end") {
+    return c.redirect(`/rooms/${room.code}/end?notice=confirm-required`, 303);
+  }
+
+  // Reuses POST /ask's own per-room lock — ending mid-judge-call must never
+  // race a judge call that's about to markSolved() the very same room, the
+  // same reason a second concurrent /ask is rejected rather than queued.
+  if (!tryLockRoom(room.id)) {
+    return c.redirect(`/rooms/${room.code}?notice=end-busy`, 303);
+  }
+
+  try {
+    // Re-read host/status while the lock is held, not the snapshot from the
+    // top of this handler — host could have been transferred, or the room
+    // could have just been solved, by whatever request held the lock right
+    // before this one got it.
+    const current = getRoomByCode(room.code);
+    if (!current || current.host_session_id !== sessionId) {
+      return c.redirect(`/rooms/${room.code}?notice=host-only`, 303);
+    }
+    if (current.status === "solved" || current.closed_at) {
+      return c.redirect(`/rooms/${room.code}?notice=already-over`, 303);
+    }
+
+    // markClosed() is itself idempotent (closed_at IS NULL in its own WHERE
+    // clause), so this is belt-and-braces against the already-checked race
+    // above — only the call that actually flips closed_at posts the notice
+    // and broadcasts, so a room can never end up with two "ended by host"
+    // rows.
+    if (markClosed(current.id)) {
+      const entry = insertEntry({
+        roomId: current.id,
+        sessionId: null,
+        kind: "system",
+        body: "🛑 The host ended this investigation. The case remains unsolved.",
+        verdict: null,
+        label: null,
+      });
+      broadcast(current.id, entry.id, { ...entry, avatarUrl: entryAvatarUrl(entry) });
+      broadcast(
+        current.id,
+        Date.now(),
+        { status: current.status, hostSessionId: current.host_session_id, closedAt: true },
+        "room-status",
+      );
+      broadcastLobbyCardChange(current.id, current.code);
+    }
+
+    return c.redirect(`/rooms/${room.code}`, 303);
+  } finally {
+    unlockRoom(room.id);
+  }
+});
+
 rooms.post("/rooms/:code/ask", async (c) => {
   const room = getRoomByCode(c.req.param("code"));
   if (!room) return c.notFound();
-  if (room.status === "solved") return c.redirect(`/rooms/${room.code}`, 303);
+  if (room.status === "solved" || room.closed_at) return c.redirect(`/rooms/${room.code}`, 303);
   if (room.status === "waiting") {
     return c.redirect(`/rooms/${room.code}?notice=not-started`, 303);
   }
@@ -430,7 +531,7 @@ rooms.post("/rooms/:code/ask", async (c) => {
     // and an already-solved room must never be judged again (also never
     // spends a second API call on a room nobody can still answer into).
     const current = getRoomByCode(room.code);
-    if (!current || current.status !== "active") {
+    if (!current || current.status !== "active" || current.closed_at) {
       return c.redirect(`/rooms/${room.code}`, 303);
     }
 
@@ -612,6 +713,30 @@ rooms.get("/rooms/:code/stream", (c) => {
         closed = true;
       },
     });
+
+    // A fresh, post-subscribe read of this room's own row — not the `room`
+    // object captured when the request first arrived, which can be stale by
+    // the time a viewer who was offline while the host ended/started/
+    // transferred the case reconnects. Fly's auto-stop can put the machine
+    // to sleep for exactly that window, and the existing "room-status"
+    // broadcast (below, and in the start/end/transfer handlers) only ever
+    // reaches a connection that was ALREADY open when the change happened —
+    // it reaches nobody who reconnects afterward. Sent once, right after
+    // subscribe, so a reconnecting tab can compare it against its own SSR
+    // dataset attributes and reload only if something actually changed,
+    // instead of unconditionally reloading (which would fight a tab that's
+    // simply reconnecting with nothing new to report).
+    const freshRoom = getRoomByCode(c.req.param("code"));
+    if (freshRoom) {
+      await stream.writeSSE({
+        event: "room-snapshot",
+        data: JSON.stringify({
+          status: freshRoom.status,
+          hostSessionId: freshRoom.host_session_id,
+          closedAt: freshRoom.closed_at,
+        }),
+      });
+    }
 
     for (const entry of getTranscript(room.id, afterId)) {
       if (entry.kind === "system" && isLegacyJudgeConfigNotice(entry.body)) continue;

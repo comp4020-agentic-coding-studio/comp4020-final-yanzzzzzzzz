@@ -1,4 +1,4 @@
-import { expect, it } from "vitest";
+import { expect, it, vi } from "vitest";
 import { DatabaseSync } from "node:sqlite";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -110,6 +110,7 @@ it("keeps every existing room, participant, transcript entry, and authored puzzl
     // module instance so this test's DATA_DIR is the one it actually runs
     // its migration against. Vite's import analysis needs the specifier's
     // static part literal, so the dynamic suffix is appended outside it.
+    vi.resetModules();
     const modulePath = "../src/db.ts?t=" + Date.now();
     const db = await import(/* @vite-ignore */ modulePath);
 
@@ -169,6 +170,110 @@ it("keeps every existing room, participant, transcript entry, and authored puzzl
     expect(db.formatAutoLabel("🐢 Riko")).toBe("🐢 Riko");
     expect(db.formatAutoLabel("Anonymous Detective Fanclub")).toBe("Anonymous Detective Fanclub");
     expect(db.formatAutoLabel("Anonymous Detective#")).toBe("Anonymous Detective#");
+    db.db.close();
+  } finally {
+    delete process.env.DATA_DIR;
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// Regression coverage for rooms.closed_at (the host-ends-unsolved feature):
+// an additive `ensureColumn` ALTER TABLE, not a rebuild like
+// ensureRoomsHaveWaitingStatus() above — so this only needs a fixture on the
+// post-'waiting' but pre-closed_at schema (no `closed_at` column at all) to
+// prove a real existing /data volume migrates forward without losing its
+// room, keeping the new column NULL (never closed) on every pre-existing row.
+it("adds rooms.closed_at additively, preserving every existing room with closed_at = NULL", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "turtle-soup-migration-closed-at-test-"));
+  process.env.DATA_DIR = dir;
+
+  const seedDb = new DatabaseSync(`${dir}/app.db`);
+  seedDb.exec("PRAGMA foreign_keys = ON;");
+  seedDb.exec(`
+    CREATE TABLE puzzles (
+      id TEXT PRIMARY KEY,
+      title TEXT NOT NULL DEFAULT '',
+      premise TEXT NOT NULL,
+      solution TEXT NOT NULL,
+      author_session_id TEXT,
+      shared INTEGER NOT NULL DEFAULT 1,
+      slug TEXT,
+      cover_path TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+    CREATE TABLE sessions (
+      id TEXT PRIMARY KEY,
+      nickname TEXT,
+      avatar TEXT,
+      bio TEXT,
+      avatar_image TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+    CREATE TABLE rooms (
+      id TEXT PRIMARY KEY,
+      code TEXT NOT NULL UNIQUE,
+      name TEXT,
+      puzzle_id TEXT NOT NULL REFERENCES puzzles(id),
+      host_session_id TEXT REFERENCES sessions(id),
+      status TEXT NOT NULL DEFAULT 'waiting' CHECK (status IN ('waiting', 'active', 'solved')),
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+    CREATE TABLE room_participants (
+      room_id TEXT NOT NULL REFERENCES rooms(id),
+      session_id TEXT NOT NULL REFERENCES sessions(id),
+      label TEXT NOT NULL,
+      joined_at TEXT NOT NULL DEFAULT (datetime('now')),
+      PRIMARY KEY (room_id, session_id)
+    );
+    CREATE TABLE qa_entries (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      room_id TEXT NOT NULL REFERENCES rooms(id),
+      session_id TEXT REFERENCES sessions(id),
+      kind TEXT NOT NULL CHECK (kind IN ('question', 'guess', 'system')),
+      body TEXT NOT NULL,
+      verdict TEXT CHECK (verdict IN ('yes', 'no', 'irrelevant', 'correct')),
+      label TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+  `);
+  seedDb
+    .prepare("INSERT INTO sessions (id, nickname) VALUES (?, ?)")
+    .run("sess-pre-closed", "Pre-Closed Riko");
+  seedDb
+    .prepare("INSERT INTO puzzles (id, title, premise, solution, slug) VALUES (?, ?, ?, ?, ?)")
+    .run("puzzle-pre-closed", "A Bowl of Turtle Soup", "premise", "solution", "a-bowl-of-turtle-soup");
+  seedDb
+    .prepare(
+      "INSERT INTO rooms (id, code, name, puzzle_id, host_session_id, status) VALUES (?, ?, ?, ?, ?, ?)",
+    )
+    .run("room-pre-closed", "PRECL", "Still Open", "puzzle-pre-closed", "sess-pre-closed", "active");
+  seedDb.close();
+
+  try {
+    vi.resetModules();
+    const modulePath = "../src/db.ts?t=" + Date.now();
+    const db = await import(/* @vite-ignore */ modulePath);
+
+    const rooms = db.db.prepare("SELECT * FROM rooms").all() as {
+      id: string;
+      code: string;
+      status: string;
+      closed_at: string | null;
+    }[];
+    expect(rooms).toHaveLength(1);
+    expect(rooms[0].code).toBe("PRECL");
+    expect(rooms[0].status).toBe("active");
+    expect(rooms[0].closed_at).toBeNull();
+
+    // markClosed() works against a freshly-migrated row — not just one
+    // created after this column always existed.
+    expect(db.markClosed("room-pre-closed")).toBe(true);
+    const closed = db.db.prepare("SELECT status, closed_at FROM rooms WHERE id = ?").get(
+      "room-pre-closed",
+    ) as { status: string; closed_at: string | null };
+    expect(closed.status).toBe("active");
+    expect(closed.closed_at).not.toBeNull();
+    db.db.close();
   } finally {
     delete process.env.DATA_DIR;
     rmSync(dir, { recursive: true, force: true });

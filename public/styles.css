@@ -1002,28 +1002,52 @@ textarea:focus-visible {
 
 /* ---------- Room ---------- */
 
+/* Desktop: a compact, full-width header strip, then a ~28/72 split between
+   the case-file sidebar and the conversation. A single <details> carries the
+   case file on BOTH breakpoints (one structure, one set of ids/forms) — only
+   its open/closed default and summary visibility change per breakpoint,
+   never its markup, so there's nothing to keep in sync between a "mobile"
+   and a "desktop" copy. */
 .room {
   display: grid;
   grid-template-columns: 1fr;
-  gap: 1.5rem;
+  gap: 1.25rem;
   align-items: start;
-  padding-top: 1.5rem;
+  padding-top: 1.25rem;
+}
+
+.room-main {
+  min-width: 0;
+}
+
+.room-header {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  padding-bottom: 0.75rem;
+  border-bottom: 1px solid var(--gold-line);
+}
+
+.room-header h1 {
+  margin: 0;
+}
+
+.room-header-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem 1.5rem;
 }
 
 @media (min-width: 54rem) {
   .room {
-    grid-template-columns: minmax(0, 1fr) 16rem;
+    grid-template-columns: minmax(16rem, 28fr) minmax(0, 72fr);
   }
 }
 
-.room-sidebar {
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
-}
-
 .room-subtitle {
-  margin: 0 0 1rem;
+  margin: 0;
   color: var(--fg-dim);
 }
 
@@ -1038,7 +1062,6 @@ textarea:focus-visible {
   flex-wrap: wrap;
   align-items: center;
   gap: 0.5rem;
-  margin-bottom: 1rem;
 }
 
 .share-button {
@@ -1085,13 +1108,44 @@ textarea:focus-visible {
   font-style: italic;
 }
 
+/* ---------- Case file (left sidebar / mobile <details>) ---------- */
+
+/* One <details> element carries the case file at every breakpoint — never a
+   duplicated mobile copy — so there's exactly one #case-file id, one set of
+   member/transfer-host forms, and one end-investigation link in the page at
+   any width. Only its default open state and its <summary>'s visibility
+   change per breakpoint (below), never its contents. */
+.case-file {
+  min-width: 0;
+}
+
+.case-file-summary {
+  cursor: pointer;
+  font-weight: 600;
+  padding: 0.6rem 0;
+  color: var(--accent-bright);
+}
+
+.case-file-summary:focus-visible {
+  outline: 3px solid var(--accent-bright);
+  outline-offset: 2px;
+}
+
+.case-file-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding-top: 0.25rem;
+}
+
+/* A small, existing-art thumbnail — not a hero image — matching "small
+   existing case cover, not huge hero" for the left case-file column. */
 .room-cover {
-  max-width: 24rem;
+  max-width: 9rem;
   aspect-ratio: 16 / 10;
   border-radius: 0.4rem;
   overflow: hidden;
   border: 1px solid var(--gold-line);
-  margin: 0.75rem 0;
 }
 
 .room-cover img {
@@ -1101,12 +1155,56 @@ textarea:focus-visible {
   display: block;
 }
 
+.case-eyebrow {
+  margin: 0;
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--accent-bright);
+  border-top: 1px solid var(--gold-line);
+  padding-top: 0.6rem;
+}
+
+.case-title {
+  margin: 0;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 1.3rem;
+}
+
+/* Left-aligned, readable serif-adjacent body text with a subtle warm-gold
+   top rule standing in for "paper" on the existing dark theme — no new
+   background texture/image, just the same --gold-line/--bg-raised tokens the
+   rest of the theme already uses. Paragraph breaks are whatever the puzzle's
+   own premise text already contains (src/render/room.ts's premiseHtml()) —
+   never split further, so a one-paragraph case never turns into invented
+   bullet "facts" or a fake timeline. */
 .premise {
-  font-size: 1.1rem;
-  padding: 1rem;
-  border: 1px solid var(--gold-line);
-  border-radius: 0.5rem;
-  background: var(--bg-raised);
+  font-size: 1rem;
+  line-height: 1.55;
+  text-align: left;
+  padding: 0.85rem 0;
+  border-top: 1px solid var(--gold-line);
+  border-bottom: 1px solid var(--gold-line);
+}
+
+.premise p {
+  margin: 0 0 0.85rem;
+}
+
+.premise p:last-child {
+  margin-bottom: 0;
+}
+
+/* Host-only "End investigation" is a low-emphasis plain link at the bottom
+   of the case file, not a button competing with Ask/Final guess for
+   attention. */
+.end-investigation {
+  margin: 0.5rem 0 0;
+  font-size: 0.85rem;
+}
+
+.end-investigation a {
+  color: var(--fg-dim);
 }
 
 .solved-banner {
@@ -1145,6 +1243,54 @@ textarea:focus-visible {
 .online-count {
   font-size: 0.9rem;
   color: var(--fg-dim);
+  margin: 0;
+}
+
+.conversation-heading {
+  margin: 0 0 0.75rem;
+}
+
+/* Mobile (<54rem): header, then the collapsed-by-default case file, then
+   the chat dominates. Desktop (>=54rem): the case file stays open, its
+   <summary> toggle is visually
+   suppressed (not display:none/hidden, which would also pull the arrow and
+   its own focus stop out of the tab order for a sighted mouse user who still
+   benefits from a visible "Case file" label) so the column just reads as a
+   plain sidebar. */
+@media (max-width: 53.99rem) {
+  .room {
+    grid-template-columns: 1fr;
+  }
+
+  .room-main {
+    order: 2;
+  }
+
+  .case-file {
+    order: 1;
+    border: 1px solid var(--gold-line);
+    border-radius: 0.5rem;
+    padding: 0 0.9rem;
+    background: var(--bg-raised);
+  }
+}
+
+@media (min-width: 54rem) {
+  .case-file-summary {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+  }
+
+  .case-file-summary:focus-visible {
+    position: static;
+    width: auto;
+    height: auto;
+    clip: auto;
+  }
 }
 
 .members {
@@ -1339,6 +1485,54 @@ textarea:focus-visible {
 .judging {
   font-size: 0.9rem;
   font-style: italic;
+  color: var(--fg-dim);
+}
+
+/* ---------- End-investigation confirmation page ---------- */
+
+.end-confirm {
+  max-width: 32rem;
+  margin: 2rem auto;
+  padding: 1.5rem;
+  border: 1px solid var(--gold-line);
+  border-radius: 0.6rem;
+  background: var(--bg-raised);
+}
+
+.end-confirm h1 {
+  margin: 0 0 0.75rem;
+  font-size: 1.3rem;
+}
+
+.end-confirm p {
+  margin: 0 0 1.25rem;
+  line-height: 1.5;
+  color: var(--fg-dim);
+}
+
+.end-confirm-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: center;
+}
+
+/* Visibly distinct from Cancel — a filled warning-toned button for the one
+   real, irreversible action on this page, versus a plain outlined link for
+   backing out. */
+.end-confirm-button {
+  padding: 0.6rem 1.2rem;
+  background: color-mix(in srgb, orangered 70%, var(--bg));
+  color: var(--fg);
+  border: 1px solid orangered;
+  border-radius: 0.4rem;
+  font-weight: 600;
+}
+
+.end-cancel-link {
+  padding: 0.6rem 1.2rem;
+  border: 1px solid var(--border);
+  border-radius: 0.4rem;
   color: var(--fg-dim);
 }
 

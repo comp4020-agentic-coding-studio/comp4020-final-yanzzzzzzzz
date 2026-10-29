@@ -54,13 +54,21 @@ type GuessDecision = (typeof GUESS_DECISIONS)[number];
 // free-text, which never exists in the first place (see responseSchema()
 // and systemPrompt() below: the model is never asked for anything but the
 // enum).
+// unknown now reads identically to irrelevant ("Irrelevant to the case.") —
+// a player doesn't need to tell "unrelated to the case" and "the case never
+// settles this" apart, and collapsing the two wordings avoids training
+// players to probe for the distinction. The historical "Not established."
+// sentence is kept out of JUDGE_REPLY_TEXTS' generation here but still
+// recognized there (see below) so an old transcript row still renders as a
+// Watson reply, not a bare unlabeled notice.
 const QUESTION_REPLY: Record<QuestionDecision, string> = {
   yes: "Yes.",
   no: "No.",
   irrelevant: "Irrelevant to the case.",
-  unknown: "Not established.",
+  unknown: "Irrelevant to the case.",
   clarify: "Please ask one clear question.",
 };
+const LEGACY_UNKNOWN_REPLY = "Not established.";
 const GUESS_REPLY: Record<GuessDecision, string> = {
   correct: "Correct!",
   incomplete: "Your explanation is incomplete.",
@@ -123,11 +131,11 @@ function systemPrompt(puzzle: Puzzle, kind: "question" | "guess"): string {
         ]
       : [
           "The player is asking a yes/no question about the solution, never a final guess.",
-          'decision = "yes" only if the solution directly confirms it.',
-          'decision = "no" only if the solution directly contradicts it — read any negation in the question carefully; do not flip or miss a "not" / "n\'t" / "never".',
-          'decision = "irrelevant" if the question is unrelated to the solution, or nothing in the solution bears on it either way.',
-          'decision = "unknown" if the solution simply never establishes an answer either way — never invent an answer the solution does not contain.',
-          'decision = "clarify" if the question actually bundles more than one independent yes/no question together — ask the player to split it rather than guessing which part they meant.',
+          'decision = "yes" if the solution directly confirms it OR if it follows by plain logical entailment from what the solution states — accept a reasonable paraphrase of a confirmed fact (e.g. "he is short" when the solution establishes his height is below average) and accept an incremental follow-up question without requiring it to restate the whole explanation.',
+          'decision = "no" only if the solution explicitly contradicts it or its logical negation — read any negation in the question carefully; do not flip or miss a "not" / "n\'t" / "never".',
+          'decision = "irrelevant" if the question is unrelated to the solution, or asks about an unstated, nonessential detail the solution never needed to cover — never invent an answer to an important causal fact the solution doesn\'t actually contain; when genuinely unsure whether something is established, prefer "irrelevant" over guessing.',
+          'decision = "unknown" is reserved the same way as "irrelevant" above — both read to the player as "irrelevant to the case" and neither should ever be used to fabricate an important fact.',
+          'decision = "clarify" if the question actually bundles more than one GENUINELY INDEPENDENT yes/no question together — never for an ordinary single question, however it\'s phrased.',
           'A question can NEVER resolve the puzzle — "correct" is not a valid answer here, no matter how close the question comes to the solution.',
         ];
 
@@ -242,6 +250,7 @@ export const JUDGE_REPLY_TEXTS: ReadonlySet<string> = new Set([
   ...Object.values(GUESS_REPLY),
   ...Object.values(JUDGE_FAILURE_MESSAGES),
   ...Object.values(MOCK_REPLY),
+  LEGACY_UNKNOWN_REPLY,
 ]);
 
 // finishReason values (ai.google.dev/api/generate-content's FinishReason

@@ -1,4 +1,4 @@
-import { afterAll, expect, it } from "vitest";
+import { afterAll, expect, it, vi } from "vitest";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -20,6 +20,7 @@ import { join } from "node:path";
 // the shared /data volume spec/global-setup.ts's live server already owns.
 const dir = mkdtempSync(join(tmpdir(), "turtle-soup-room-dedup-test-"));
 process.env.DATA_DIR = dir;
+vi.resetModules();
 
 const { roomPage } = await import("../src/render/room.ts");
 const { JUDGE_DISPLAY_NAME } = await import("../src/llm.ts");
@@ -37,6 +38,7 @@ const baseRoom = {
   host_session_id: "sess-1",
   status: "active" as const,
   created_at: "2026-01-01 00:00:00",
+  closed_at: null,
 };
 const basePuzzle = {
   id: "puzzle-1",

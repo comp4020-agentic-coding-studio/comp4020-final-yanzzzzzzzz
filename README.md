@@ -35,6 +35,13 @@ paraphrases and strict about the explanation's essential causes and twist.
 The server accepts constrained decisions and displays fixed replies rather
 than unrestricted model prose. Only a correct final guess resolves the room.
 This limits disclosure; it does not prove that every AI judgement is right.
+The host can also end an unsolved investigation for everyone from a
+confirmation page, which keeps the transcript but never reveals the solution.
+A room page splits into a compact header, a left case-file panel (cover,
+premise, members, end-investigation link), and the conversation on the
+right, collapsing the case file into a closed-by-default disclosure on
+narrow screens; a reconnecting tab also learns of a status change it missed
+while offline instead of only ones broadcast while it was connected.
 
 Room and lobby changes use Server-Sent Events. SQLite and uploaded images
 live on Fly's persistent volume, so a redeploy does not intentionally erase

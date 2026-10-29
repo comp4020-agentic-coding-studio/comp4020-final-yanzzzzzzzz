@@ -274,12 +274,13 @@ it("maps every question decision onto the existing yes/no/irrelevant verdict enu
   expect(result).toEqual({ ok: true, verdict: { verdict: "irrelevant", reply: "Irrelevant to the case." } });
 
   // unknown/clarify both collapse onto the existing 'irrelevant' DB value —
-  // the only schema-compatible slot for "not a yes/no answer" — but each
-  // carries its OWN fixed reply text, so a player can still tell "the case
-  // never says" apart from "ask one clear question" without a new column.
+  // the only schema-compatible slot for "not a yes/no answer". unknown now
+  // reads identically to irrelevant's own reply text (players don't need to
+  // distinguish "unrelated" from "never established"); clarify keeps its own
+  // distinct fixed reply.
   stubFetch({ status: 200, body: geminiBody("unknown") });
   result = await judge(PUZZLE, [], "q", "question");
-  expect(result).toEqual({ ok: true, verdict: { verdict: "irrelevant", reply: "Not established." } });
+  expect(result).toEqual({ ok: true, verdict: { verdict: "irrelevant", reply: "Irrelevant to the case." } });
 
   stubFetch({ status: 200, body: geminiBody("clarify") });
   result = await judge(PUZZLE, [], "q", "question");
