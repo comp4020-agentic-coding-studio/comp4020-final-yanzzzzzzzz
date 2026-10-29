@@ -1,9 +1,10 @@
-import type { Profile } from "../db.ts";
+import type { InvestigationHistoryEntry, OwnStoryEntry, Profile } from "../db.ts";
 import { layout } from "./layout.ts";
 import { escapeHtml } from "./html.ts";
 import { asset } from "./asset.ts";
 import { resolveAvatarImage } from "./avatars.ts";
 import { AVATAR_EMOJIS } from "../avatar-options.ts";
+import { coverFor } from "./covers.ts";
 
 // Re-exported from src/avatar-options.ts (not defined here) so src/db.ts
 // can check "is this an emoji I should prefix onto a nickname" without
@@ -11,14 +12,94 @@ import { AVATAR_EMOJIS } from "../avatar-options.ts";
 // carries) and creating a cycle.
 export const AVATARS = AVATAR_EMOJIS;
 
+const STATUS_LABEL: Record<InvestigationHistoryEntry["status"], string> = {
+  waiting: "Waiting",
+  active: "In progress",
+  // Never "you solved it" — a room reaching 'solved' only means SOMEONE in
+  // it submitted the correct final guess, not necessarily this viewer.
+  solved: "Solved together",
+  ended: "Ended unsolved",
+};
+
+// `joinedAtUtc` is stored as SQLite's `datetime('now')` text (UTC, no
+// timezone suffix) — appended explicitly here so the profile page never
+// implies a local time it didn't actually compute.
+function formatUtc(sqliteDatetime: string): string {
+  return `${sqliteDatetime.replace(" ", "T")}Z`.replace(/\.\d+Z$/, "Z");
+}
+
+function formatUtcLabel(sqliteDatetime: string): string {
+  return new Date(formatUtc(sqliteDatetime)).toLocaleString("en-GB", {
+    timeZone: "UTC", day: "numeric", month: "short", year: "numeric",
+    hour: "2-digit", minute: "2-digit",
+  }) + " UTC";
+}
+
+function paginationHtml(
+  basePath: string,
+  pageParam: string,
+  page: number,
+  total: number,
+  pageSize: number,
+): string {
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  if (totalPages <= 1) return "";
+  const link = (p: number, label: string): string =>
+    `<a href="${basePath}?${pageParam}=${p}#${pageParam === "historyPage" ? "your-investigations" : "your-stories"}" class="button-link-outline">${label}</a>`;
+  return `<nav class="profile-pagination" aria-label="Pagination">
+    ${page > 1 ? link(page - 1, "Previous") : ""}
+    <span class="profile-pagination-status">Page ${page} of ${totalPages}</span>
+    ${page < totalPages ? link(page + 1, "Next") : ""}
+  </nav>`;
+}
+
+function investigationRowHtml(entry: InvestigationHistoryEntry): string {
+  const timeHint =
+    entry.reasoningSeconds === null
+      ? "Not recorded"
+      : `${Math.floor(entry.reasoningSeconds / 60)}m ${entry.reasoningSeconds % 60}s`;
+  return `<li class="profile-history-row">
+    <a href="/rooms/${escapeHtml(entry.roomCode)}" class="profile-history-title">${escapeHtml(entry.puzzleTitle)}</a>
+    <span class="profile-history-meta">
+      Joined <time datetime="${escapeHtml(formatUtc(entry.joinedAtUtc))}">${escapeHtml(formatUtcLabel(entry.joinedAtUtc))}</time>
+      · ${escapeHtml(STATUS_LABEL[entry.status])}
+      · Time tracked: ${escapeHtml(timeHint)}
+    </span>
+  </li>`;
+}
+
+function storyRowHtml(entry: OwnStoryEntry): string {
+  return `<li class="profile-history-row">
+    <img
+      class="profile-story-cover"
+      src="${coverFor(entry.slug, entry.puzzleId, entry.coverPath)}"
+      alt=""
+      width="96"
+      height="60"
+      loading="lazy"
+      decoding="async"
+    />
+    <div>
+      <a href="/rooms/new?puzzleId=${encodeURIComponent(entry.puzzleId)}" class="profile-history-title">${escapeHtml(entry.title)}</a>
+      <span class="profile-history-meta">
+        Created <time datetime="${escapeHtml(formatUtc(entry.createdAtUtc))}">${escapeHtml(formatUtcLabel(entry.createdAtUtc))}</time>
+        · ${entry.shared ? "Public" : "Private"}
+        · Uploaded by you
+      </span>
+    </div>
+  </li>`;
+}
+
 export function profilePage(args: {
   profile: Profile;
   stats: { participated: number; solved: number };
   saved?: boolean;
   notice?: string;
   draft?: { nickname?: string; bio?: string };
+  history?: { entries: InvestigationHistoryEntry[]; total: number; page: number; pageSize: number };
+  stories?: { entries: OwnStoryEntry[]; total: number; page: number; pageSize: number };
 }): string {
-  const { profile, stats, saved, notice, draft } = args;
+  const { profile, stats, saved, notice, draft, history, stories } = args;
   const currentAvatarSrc = resolveAvatarImage({ avatarImage: profile.avatarImage, avatar: profile.avatar });
   // A draft nickname/bio only ever arrives via GET /profile's own query
   // params (routes/profile.ts's draftParams(), round-tripped there after a
@@ -30,7 +111,7 @@ export function profilePage(args: {
   return layout(
     "Your profile · Turtle Soup Puzzle Room",
     `
-    <section class="profile-card">
+    <section class="profile-card" id="profile-details">
       <h1 class="profile-heading">Your detective profile</h1>
       <p class="profile-intro">
         A name and a face for your next case.
@@ -38,6 +119,11 @@ export function profilePage(args: {
       <p class="profile-hint">
         Leave your nickname blank to use Mystery Detective.
       </p>
+      <nav class="profile-section-nav" aria-label="Profile sections">
+        <a href="#profile-details">Details</a>
+        <a href="#your-investigations">Investigations</a>
+        <a href="#your-stories">Your stories</a>
+      </nav>
       ${saved ? `<p class="profile-notice" role="status">Saved.</p>` : ""}
       ${notice ? `<p class="profile-notice" role="status">${escapeHtml(notice)}</p>` : ""}
 
@@ -103,8 +189,48 @@ export function profilePage(args: {
         solved <strong>${stats.solved}</strong> of them.
       </p>
     </section>
+
+    ${history ? investigationsSectionHtml(history) : ""}
+    ${stories ? storiesSectionHtml(stories) : ""}
+
     <script src="${asset("/profile-avatar.js")}"></script>
     `,
     profile,
   );
+}
+
+function investigationsSectionHtml(history: {
+  entries: InvestigationHistoryEntry[];
+  total: number;
+  page: number;
+  pageSize: number;
+}): string {
+  return `<section class="profile-history-section" id="your-investigations">
+    <h2>Your investigations</h2>
+    <p class="profile-history-hint">Cases you've joined, from this browser session only. Time measures active participation; earlier activity may show Not recorded.</p>
+    ${
+      history.entries.length
+        ? `<ul class="profile-history-list">${history.entries.map(investigationRowHtml).join("\n")}</ul>`
+        : `<p class="profile-history-empty">You haven't joined any cases yet.</p>`
+    }
+    ${paginationHtml("/profile", "historyPage", history.page, history.total, history.pageSize)}
+  </section>`;
+}
+
+function storiesSectionHtml(stories: {
+  entries: OwnStoryEntry[];
+  total: number;
+  page: number;
+  pageSize: number;
+}): string {
+  return `<section class="profile-history-section" id="your-stories">
+    <h2>Your stories</h2>
+    <p class="profile-history-hint">Cases you've written, public and private.</p>
+    ${
+      stories.entries.length
+        ? `<ul class="profile-history-list">${stories.entries.map(storyRowHtml).join("\n")}</ul>`
+        : `<p class="profile-history-empty">You haven't written any cases yet.</p>`
+    }
+    ${paginationHtml("/profile", "storiesPage", stories.page, stories.total, stories.pageSize)}
+  </section>`;
 }

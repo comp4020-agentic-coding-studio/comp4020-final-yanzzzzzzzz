@@ -5,7 +5,7 @@ import { isLegacyEmojiAvatar } from "../avatar-options.ts";
 
 function identityLink(profile?: Profile): string {
   if (!profile?.nickname) {
-    return `<a href="/profile" class="profile-link">Set a nickname</a>`;
+    return `<a href="/profile" class="profile-link">Profile</a>`;
   }
   // Only a legacy emoji avatar is ever shown as a text prefix here — an
   // image-preset id is an internal key, not display text (same reasoning as

@@ -113,6 +113,8 @@ it("keeps every existing room, participant, transcript entry, and authored puzzl
     vi.resetModules();
     const modulePath = "../src/db.ts?t=" + Date.now();
     const db = await import(/* @vite-ignore */ modulePath);
+    const participantColumns = db.db.prepare("PRAGMA table_info(room_participants)").all() as { name: string }[];
+    expect(participantColumns.map((column) => column.name)).toContain("reasoning_seconds");
 
     const rooms = db.db.prepare("SELECT * FROM rooms").all() as { code: string; name: string }[];
     expect(rooms).toHaveLength(1);
@@ -253,6 +255,8 @@ it("adds rooms.closed_at additively, preserving every existing room with closed_
     vi.resetModules();
     const modulePath = "../src/db.ts?t=" + Date.now();
     const db = await import(/* @vite-ignore */ modulePath);
+    const participantColumns = db.db.prepare("PRAGMA table_info(room_participants)").all() as { name: string }[];
+    expect(participantColumns.map((column) => column.name)).toContain("reasoning_seconds");
 
     const rooms = db.db.prepare("SELECT * FROM rooms").all() as {
       id: string;

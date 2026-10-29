@@ -4,7 +4,7 @@ import { escapeHtml } from "./html.ts";
 import { coverFor } from "./covers.ts";
 import { JUDGE_DISPLAY_NAME } from "../llm.ts";
 
-export type CaseSource = "all" | "builtin" | "player";
+export type CaseSource = "all" | "builtin" | "player" | "mine";
 
 export interface CaseListing {
   id: string;
@@ -14,11 +14,17 @@ export interface CaseListing {
   authorLabel: string | null;
   usageCount: number;
   coverPath: string | null;
+  isMine: boolean;
 }
 
 function caseListingHtml(puzzle: CaseListing): string {
-  const by = puzzle.authorLabel ? `Player-created, by ${escapeHtml(puzzle.authorLabel)}` : "Built-in case";
+  const by = puzzle.isMine
+    ? "Uploaded by you"
+    : puzzle.authorLabel
+      ? `Player-created, by ${escapeHtml(puzzle.authorLabel)}`
+      : "Built-in case";
   return `<li class="case-browse-card">
+    ${puzzle.isMine ? `<span class="case-browse-mine-badge">Uploaded by you</span>` : ""}
     <a href="/rooms/new?puzzleId=${encodeURIComponent(puzzle.id)}" class="case-browse-cover-link">
       <img
         class="case-browse-cover"
@@ -55,6 +61,7 @@ function sourceFilterHtml(q: string | undefined, active: CaseSource): string {
     ${tab("all", "All")}
     ${tab("builtin", "Built-in")}
     ${tab("player", "Player-created")}
+    ${tab("mine", "Yours")}
   </nav>`;
 }
 

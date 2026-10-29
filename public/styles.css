@@ -676,6 +676,7 @@ textarea:focus-visible {
 
 .featured-card,
 .case-browse-card {
+  position: relative;
   border: 1px solid var(--gold-line);
   border-radius: 0.7rem;
   background: var(--bg-raised);
@@ -683,6 +684,19 @@ textarea:focus-visible {
   display: flex;
   flex-direction: column;
   transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+}
+
+.case-browse-mine-badge {
+  position: absolute;
+  top: 0.5rem;
+  right: 0.5rem;
+  z-index: 1;
+  background: var(--accent);
+  color: var(--bg);
+  font-size: 0.7rem;
+  font-weight: 600;
+  padding: 0.15rem 0.5rem;
+  border-radius: 999px;
 }
 
 .featured-card:hover,
@@ -2036,6 +2050,87 @@ textarea:focus-visible {
   color: var(--fg-dim);
 }
 
+.profile-history-section {
+  max-width: 58rem;
+  margin: 2rem auto 0;
+}
+
+.profile-history-section h2 {
+  color: var(--fg);
+  margin-bottom: 0.25rem;
+}
+
+.profile-history-hint,
+.profile-history-empty {
+  color: var(--fg-dim);
+  font-size: 0.9rem;
+}
+
+.profile-history-list {
+  list-style: none;
+  margin: 0.75rem 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.profile-history-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  border: 1px solid var(--gold-line);
+  border-radius: 0.6rem;
+  background: var(--bg-raised);
+  padding: 0.6rem 0.9rem;
+}
+
+.profile-story-cover {
+  width: 96px;
+  height: 60px;
+  object-fit: cover;
+  border-radius: 0.4rem;
+  flex-shrink: 0;
+}
+
+.profile-history-title {
+  display: block;
+  color: var(--fg);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.profile-history-title:hover,
+.profile-history-title:focus-visible {
+  text-decoration: underline;
+}
+
+.profile-history-meta {
+  display: block;
+  color: var(--fg-dim);
+  font-size: 0.82rem;
+  margin-top: 0.15rem;
+}
+
+.profile-pagination {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-top: 1rem;
+}
+
+.profile-pagination-status {
+  color: var(--fg-dim);
+  font-size: 0.85rem;
+}
+
+@media (max-width: 420px) {
+  .profile-history-row {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}
+
 .not-found {
   padding: 2rem 0;
   text-align: center;
@@ -2305,3 +2400,11 @@ textarea:focus-visible {
   max-width: 42rem;
   color: var(--fg-dim);
 }
+
+.profile-section-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem 1rem;
+  margin: 0.75rem 0 1.25rem;
+}
+.profile-section-nav a { font-size: 0.9rem; }

@@ -1,5 +1,12 @@
 import { Hono } from "hono";
-import { getProfile, profileStats, setAvatarImage, setProfile } from "../db.ts";
+import {
+  getProfile,
+  listOwnInvestigations,
+  listOwnStories,
+  profileStats,
+  setAvatarImage,
+  setProfile,
+} from "../db.ts";
 import { getOrCreateSessionId } from "../session.ts";
 import { AVATARS, profilePage } from "../render/profile.ts";
 import { avatarForSession, isKnownAvatarPreset } from "../render/avatars.ts";
@@ -76,14 +83,54 @@ function draftParams(c: { req: { query: (name: string) => string | undefined } }
   return { nickname, bio };
 }
 
+const HISTORY_PAGE_SIZE = 20;
+
+// Bounds a page query param to a safe positive page number — an out-of-range
+// or garbage value (negative, zero, non-numeric, absurdly large) falls back
+// to page 1 rather than producing a negative OFFSET or an empty-looking page
+// that's actually a server error in disguise.
+const MAX_HISTORY_PAGE = 1_000_000;
+
+function pageParam(raw: string | undefined): number {
+  const n = Number(raw);
+  return Number.isSafeInteger(n) && n >= 1 && n <= MAX_HISTORY_PAGE ? n : 1;
+}
+
 profileRoute.get("/profile", (c) => {
+  // The ENTIRE history/stories section below is scoped to this one id,
+  // resolved only from the request's own session cookie — never from a
+  // query param, so one player can never pull up another's investigation
+  // history or uploaded-story list by guessing/passing a different id.
   const sessionId = getOrCreateSessionId(c);
   const profile = getProfile(sessionId);
   const stats = profileStats(sessionId);
   const saved = c.req.query("saved") === "1";
   const notice = AVATAR_NOTICES[c.req.query("notice") ?? ""];
   const draft = draftParams(c);
-  return c.html(profilePage({ profile, stats, saved, notice, draft }));
+
+  const historyPage = pageParam(c.req.query("historyPage"));
+  const history = listOwnInvestigations(sessionId, {
+    limit: HISTORY_PAGE_SIZE,
+    offset: (historyPage - 1) * HISTORY_PAGE_SIZE,
+  });
+
+  const storiesPage = pageParam(c.req.query("storiesPage"));
+  const stories = listOwnStories(sessionId, {
+    limit: HISTORY_PAGE_SIZE,
+    offset: (storiesPage - 1) * HISTORY_PAGE_SIZE,
+  });
+
+  return c.html(
+    profilePage({
+      profile,
+      stats,
+      saved,
+      notice,
+      draft,
+      history: { ...history, page: historyPage, pageSize: HISTORY_PAGE_SIZE },
+      stories: { ...stories, page: storiesPage, pageSize: HISTORY_PAGE_SIZE },
+    }),
+  );
 });
 
 // `avatar` (the existing emoji column) can hold either a legacy emoji from

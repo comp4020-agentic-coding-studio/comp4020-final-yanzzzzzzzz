@@ -75,19 +75,17 @@ const ROOM_CREATE_BODY_LIMIT_BYTES = 3 * 1024 * 1024;
 export const rooms = new Hono();
 
 rooms.get("/rooms/new", (c) => {
-  const profile = getProfile(getOrCreateSessionId(c));
+  const sessionId = getOrCreateSessionId(c);
+  const profile = getProfile(sessionId);
   const mode = c.req.query("mode") === "author" ? "author" : "existing";
   const notice = NOTICES[c.req.query("notice") ?? ""];
-  // A ?puzzleId= only ever pre-selects a puzzle already on the public list —
-  // isPuzzleAvailable() is the same shared/built-in visibility check POST
-  // /rooms enforces, so an invalid or private id just falls back to no
-  // selection rather than preselecting (and thereby revealing the existence
-  // of) a puzzle the requester shouldn't see.
+  // Public cases and this cookie's own private cases may be selected.
+  // Other authors' private cases remain unavailable in both GET and POST.
   const requestedPuzzleId = c.req.query("puzzleId");
   const selectedPuzzleId =
-    requestedPuzzleId && isPuzzleAvailable(requestedPuzzleId) ? requestedPuzzleId : undefined;
+    requestedPuzzleId && isPuzzleAvailable(requestedPuzzleId, sessionId) ? requestedPuzzleId : undefined;
   return c.html(
-    newRoomPage({ mode, puzzles: listAvailablePuzzles(), profile, notice, selectedPuzzleId }),
+    newRoomPage({ mode, puzzles: listAvailablePuzzles(undefined, sessionId), profile, notice, selectedPuzzleId }),
   );
 });
 
@@ -150,7 +148,7 @@ rooms.post(
   } else {
     const puzzleId = typeof body.puzzleId === "string" ? body.puzzleId : "";
     if (puzzleId) {
-      if (!isPuzzleAvailable(puzzleId)) {
+      if (!isPuzzleAvailable(puzzleId, sessionId)) {
         return c.redirect("/rooms/new?notice=unavailable-puzzle", 303);
       }
       const found = getPuzzle(puzzleId);

@@ -142,6 +142,15 @@ ensureColumn("puzzles", "slug", "ALTER TABLE puzzles ADD COLUMN slug TEXT");
 // (no route lets a player edit an existing case's cover).
 ensureColumn("puzzles", "cover_path", "ALTER TABLE puzzles ADD COLUMN cover_path TEXT");
 
+// Additive, nullable: NULL means "no credited time recorded for this
+// (room, session) yet" — every row that existed before this column shipped,
+// and every row created afterward until its session's FIRST valid heartbeat
+// in that room, stays NULL forever rather than being backfilled from
+// joined_at/created_at (recordHeartbeat()'s own server-clock dedup is the
+// only thing ever allowed to turn NULL into a number — see its own comment
+// below). Must run AFTER the room_participants CREATE TABLE above, same as
+// every other ensureColumn() call in this file.
+
 // ensureColumn can add new columns, but SQLite can't ALTER a CHECK
 // constraint in place — rooms.status predates the 'waiting' value a host-
 // gated lifecycle needs. Rebuilds the table in one transaction when that's
@@ -236,6 +245,15 @@ function ensureRoomsHaveWaitingStatus(): void {
   db.exec("DROP TABLE rooms_old");
 }
 ensureRoomsHaveWaitingStatus();
+
+// The legacy FK repair can rebuild room_participants; add personal timing
+// only after it finishes, otherwise that rebuild can discard the new column.
+ensureColumn(
+  "room_participants",
+  "reasoning_seconds",
+  "ALTER TABLE room_participants ADD COLUMN reasoning_seconds INTEGER",
+);
+
 
 // Additive, nullable: a host-ended-unsolved room keeps its existing status
 // ('waiting' or 'active' — never 'solved', see guards in src/routes/rooms.ts)
@@ -393,11 +411,11 @@ export function pickRandomPuzzle(): Puzzle {
   return rowToPuzzle(row);
 }
 
-export function isPuzzleAvailable(puzzleId: string): boolean {
-  const row = db.prepare("SELECT shared FROM puzzles WHERE id = ?").get(puzzleId) as
-    | { shared: number }
+export function isPuzzleAvailable(puzzleId: string, viewerSessionId?: string): boolean {
+  const row = db.prepare("SELECT shared, author_session_id AS authorSessionId FROM puzzles WHERE id = ?").get(puzzleId) as
+    | { shared: number; authorSessionId: string | null }
     | undefined;
-  return Boolean(row?.shared);
+  return Boolean(row && (row.shared || (viewerSessionId && row.authorSessionId === viewerSessionId)));
 }
 
 export function createAuthoredPuzzle(args: {
@@ -431,7 +449,24 @@ export function createAuthoredPuzzle(args: {
 // Never selects `solution` — the list a room-creation picker renders from
 // can't leak an answer just by existing, not merely by the UI choosing not
 // to show it.
-export function listAvailablePuzzles(search?: string): {
+// `viewerSessionId` controls two things at once, both computed here so no
+// caller ever has to see a raw author_session_id to answer either question:
+//   - which ROWS are visible at all: a shared(=1) puzzle to anyone, plus a
+//     private(=0) puzzle ONLY to its own author (viewerSessionId === that
+//     row's author) — this is also what keeps another player's private case
+//     out of the Case Library/room-creation picker entirely, not just hidden
+//     in the UI;
+//   - `isMine` on each surviving row: true only when viewerSessionId equals
+//     that row's author_session_id, false otherwise (including for every
+//     other visitor looking at the same shared row) — never derived from or
+//     exposing the raw author_session_id itself to the caller.
+// Passing no viewerSessionId preserves the original public-library behavior
+// (shared rows only, isMine always false) for every call site that has no
+// viewer context (e.g. community.ts's title list).
+export function listAvailablePuzzles(
+  search?: string,
+  viewerSessionId?: string,
+): {
   id: string;
   slug: string | null;
   title: string;
@@ -439,25 +474,23 @@ export function listAvailablePuzzles(search?: string): {
   authorLabel: string | null;
   usageCount: number;
   coverPath: string | null;
+  isMine: boolean;
 }[] {
   const like = search ? `%${search.replace(/[%_]/g, (m) => `\\${m}`)}%` : null;
-  const rows = (
-    like
-      ? db.prepare(
-          `SELECT p.id, p.slug, p.title, p.premise, p.author_session_id AS authorSessionId, p.cover_path AS coverPath,
-                  (SELECT COUNT(*) FROM rooms r WHERE r.puzzle_id = p.id) AS usageCount
-           FROM puzzles p
-           WHERE p.shared = 1 AND (p.title LIKE ? ESCAPE '\\' OR p.premise LIKE ? ESCAPE '\\')
-           ORDER BY p.created_at DESC`,
-        )
-      : db.prepare(
-          `SELECT p.id, p.slug, p.title, p.premise, p.author_session_id AS authorSessionId, p.cover_path AS coverPath,
-                  (SELECT COUNT(*) FROM rooms r WHERE r.puzzle_id = p.id) AS usageCount
-           FROM puzzles p
-           WHERE p.shared = 1
-           ORDER BY p.created_at DESC`,
-        )
-  ).all(...(like ? [like, like] : [])) as {
+  const visibility = viewerSessionId ? "(p.shared = 1 OR p.author_session_id = ?)" : "p.shared = 1";
+  const visibilityArgs = viewerSessionId ? [viewerSessionId] : [];
+  const searchClause = like ? "AND (p.title LIKE ? ESCAPE '\\' OR p.premise LIKE ? ESCAPE '\\')" : "";
+  const searchArgs = like ? [like, like] : [];
+
+  const rows = db
+    .prepare(
+      `SELECT p.id, p.slug, p.title, p.premise, p.author_session_id AS authorSessionId, p.cover_path AS coverPath,
+              (SELECT COUNT(*) FROM rooms r WHERE r.puzzle_id = p.id) AS usageCount
+       FROM puzzles p
+       WHERE ${visibility} ${searchClause}
+       ORDER BY p.created_at DESC`,
+    )
+    .all(...visibilityArgs, ...searchArgs) as {
     id: string;
     slug: string | null;
     title: string;
@@ -476,6 +509,7 @@ export function listAvailablePuzzles(search?: string): {
     authorLabel: r.authorSessionId
       ? (getProfile(r.authorSessionId).nickname ?? "Anonymous author")
       : null,
+    isMine: viewerSessionId !== undefined && r.authorSessionId === viewerSessionId,
   }));
 }
 
@@ -867,6 +901,22 @@ export interface HeartbeatResult {
   credited: boolean;
 }
 
+// Turns a never-yet-credited NULL into an explicit 0 the moment this
+// (room, session) pair is confirmed to be a valid active participant taking
+// a heartbeat (initial or resume) — never on an invalid/inactive one, and
+// never with any duration attached. This exists only so "time tracked, none
+// credited yet" (0) is distinguishable from "this row predates the feature,
+// no tracking ever happened" (NULL) in profile history — the actual credited
+// seconds are still only ever added by the COALESCE(...) UPDATE inside
+// recordHeartbeat() below.
+function initializeReasoningSecondsIfNull(roomId: string, sessionId: string): void {
+  db.prepare(
+    `UPDATE room_participants
+     SET reasoning_seconds = 0
+     WHERE room_id = ? AND session_id = ? AND reasoning_seconds IS NULL`,
+  ).run(roomId, sessionId);
+}
+
 // `resume` is an event the client asserts (a tab just became visible, or
 // just loaded), never a duration — the server's own clock still decides how
 // much time that implies, which is "none, this call only sets a fresh
@@ -898,6 +948,7 @@ export function recordHeartbeat(
     db.prepare(
       "INSERT INTO session_activity (session_id, last_heartbeat_at) VALUES (?, ?)",
     ).run(sessionId, nowIso);
+    initializeReasoningSecondsIfNull(roomId, sessionId);
     return { ok: true, credited: false };
   }
 
@@ -921,6 +972,7 @@ export function recordHeartbeat(
     // the gap is long enough that it can only be a background tab, a
     // dropped connection, or a sleeping machine — either way, nothing earns
     // credit, the cursor just moves to now.
+    initializeReasoningSecondsIfNull(roomId, sessionId);
     return { ok: true, credited: false };
   }
 
@@ -930,6 +982,17 @@ export function recordHeartbeat(
       seconds,
       REASONING_TOTAL_KEY,
     );
+    // Same credited delta as the global total above, attributed to this
+    // (room, session) pair's own column — NULL (never-yet-credited) is
+    // turned into 0 first so the increment below always has a number to
+    // add to, never NULL + seconds = NULL. This is the ONLY place that ever
+    // writes this column: no backfill from joined_at/created_at anywhere
+    // else, so a historical NULL always means "not recorded," never "zero."
+    db.prepare(
+      `UPDATE room_participants
+       SET reasoning_seconds = COALESCE(reasoning_seconds, 0) + ?
+       WHERE room_id = ? AND session_id = ?`,
+    ).run(seconds, roomId, sessionId);
   }
   return { ok: true, credited: seconds > 0 };
 }
@@ -941,6 +1004,123 @@ export function lastQuestionAt(roomId: string, sessionId: string): string | unde
     )
     .get(roomId, sessionId) as { created_at: string } | undefined;
   return row?.created_at;
+}
+
+// --- Personal profile history (own investigations / own stories) --------
+
+export interface InvestigationHistoryEntry {
+  roomId: string;
+  roomCode: string;
+  puzzleTitle: string;
+  joinedAtUtc: string;
+  // "waiting"/"active" mirror the room's own live status; "solved" only
+  // means the ROOM was solved by SOMEONE, never that this viewer personally
+  // solved it — displayed as "Solved together" for exactly that reason, see
+  // render side. "ended" is a host-closed room (closed_at set, status never
+  // 'solved' — see markClosed()'s own guard).
+  status: "waiting" | "active" | "solved" | "ended";
+  reasoningSeconds: number | null;
+}
+
+// A session's OWN investigation history only — scoped by session_id in the
+// WHERE clause, never a caller-supplied one (routes/profile.ts must only
+// ever pass the session id resolved from the request's own cookie, never a
+// query param). Ordered newest-joined-first with a stable rowid tiebreak,
+// same bounded-pagination shape as listActiveRooms()/the lobby.
+export function listOwnInvestigations(
+  sessionId: string,
+  opts: { limit: number; offset: number },
+): { entries: InvestigationHistoryEntry[]; total: number } {
+  const total = (
+    db
+      .prepare("SELECT COUNT(*) AS n FROM room_participants WHERE session_id = ?")
+      .get(sessionId) as { n: number }
+  ).n;
+
+  const rows = db
+    .prepare(
+      `SELECT r.id AS roomId, r.code AS roomCode, p.title AS puzzleTitle,
+              rp.joined_at AS joinedAtUtc, r.status AS roomStatus, r.closed_at AS closedAt,
+              rp.reasoning_seconds AS reasoningSeconds
+       FROM room_participants rp
+       JOIN rooms r ON r.id = rp.room_id
+       JOIN puzzles p ON p.id = r.puzzle_id
+       WHERE rp.session_id = ?
+       ORDER BY rp.joined_at DESC, r.rowid DESC
+       LIMIT ? OFFSET ?`,
+    )
+    .all(sessionId, opts.limit, opts.offset) as {
+    roomId: string;
+    roomCode: string;
+    puzzleTitle: string;
+    joinedAtUtc: string;
+    roomStatus: "waiting" | "active" | "solved";
+    closedAt: string | null;
+    reasoningSeconds: number | null;
+  }[];
+
+  const entries: InvestigationHistoryEntry[] = rows.map((r) => ({
+    roomId: r.roomId,
+    roomCode: r.roomCode,
+    puzzleTitle: r.puzzleTitle,
+    joinedAtUtc: r.joinedAtUtc,
+    status: r.closedAt !== null ? "ended" : r.roomStatus,
+    reasoningSeconds: r.reasoningSeconds,
+  }));
+  return { entries, total };
+}
+
+export interface OwnStoryEntry {
+  puzzleId: string;
+  title: string;
+  createdAtUtc: string;
+  shared: boolean;
+  coverPath: string | null;
+  slug: string | null;
+}
+
+// Never selects `solution` — same rule as listAvailablePuzzles(). Scoped to
+// author_session_id = the viewer's own session, so this can safely include
+// both shared AND private rows (a player's own private case is exactly the
+// one place it's fine to show it outside the public library).
+export function listOwnStories(
+  sessionId: string,
+  opts: { limit: number; offset: number },
+): { entries: OwnStoryEntry[]; total: number } {
+  const total = (
+    db
+      .prepare("SELECT COUNT(*) AS n FROM puzzles WHERE author_session_id = ?")
+      .get(sessionId) as { n: number }
+  ).n;
+
+  const rows = db
+    .prepare(
+      `SELECT id AS puzzleId, title, created_at AS createdAtUtc, shared, cover_path AS coverPath, slug
+       FROM puzzles
+       WHERE author_session_id = ?
+       ORDER BY created_at DESC, rowid DESC
+       LIMIT ? OFFSET ?`,
+    )
+    .all(sessionId, opts.limit, opts.offset) as {
+    puzzleId: string;
+    title: string;
+    createdAtUtc: string;
+    shared: number;
+    coverPath: string | null;
+    slug: string | null;
+  }[];
+
+  return {
+    entries: rows.map((r) => ({
+      puzzleId: r.puzzleId,
+      title: r.title,
+      createdAtUtc: r.createdAtUtc,
+      shared: Boolean(r.shared),
+      coverPath: r.coverPath,
+      slug: r.slug,
+    })),
+    total,
+  };
 }
 
 // --- Community story reviews ---------------------------------------------
