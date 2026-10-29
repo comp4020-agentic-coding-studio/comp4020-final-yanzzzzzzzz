@@ -14,11 +14,6 @@ A good session lets people build on one another's questions without losing
 track of who asked what. Success means discovering the case's causal logic
 together, not guessing the judge's preferred wording.
 
-[Tanghenre](https://tanghenre.com/) informed the case-library, content-warning
-and optional-music presentation. This project takes those ideas towards
-co-presence: players occupy the same persistent room and see the same
-questions and decisions. It deliberately avoids an individual question
-budget, which could make one person's experimentation a cost to everyone.
 [Nielsen's usability heuristics](https://www.nngroup.com/articles/ten-usability-heuristics/)
 provide a further lens: visible pending states and readable failures matter
 because an unexplained pause interrupts the group's reasoning. These are
