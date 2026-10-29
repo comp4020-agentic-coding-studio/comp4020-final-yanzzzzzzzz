@@ -18,6 +18,7 @@ import {
 } from "./db.ts"; // also runs migrations + seeds the puzzle bank on boot
 import { getOrCreateSessionId } from "./session.ts";
 import { connectionCount } from "./sse.ts";
+import { coverForRoom } from "./render/covers.ts";
 
 const app = new Hono();
 
@@ -29,6 +30,7 @@ app.get("/", (c) => {
     ...r,
     players: connectionCount(r.id),
     hostLabel: hostLabel(r.host_session_id),
+    coverUrl: coverForRoom(r.slug, r.code, r.cover_path),
   }));
   const featuredPuzzles = listAvailablePuzzles()
     .slice(0, 3)

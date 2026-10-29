@@ -35,3 +35,20 @@ export function coverFor(
   if (coverPath && puzzleId) return `/uploads/cover/${encodeURIComponent(puzzleId)}`;
   return asset((slug && STABLE_COVERS[slug]) || ARCHIVE_COVER);
 }
+
+// The lobby/home room cards show a thumbnail for every room someone can see
+// in the list — including rooms for a PRIVATE (unshared) authored puzzle,
+// which nobody viewing the lobby has joined yet. canViewPuzzleCover() (used
+// by GET /uploads/cover/:puzzleId) deliberately requires either a shared
+// puzzle, its own author, or an existing room_participants row — none of
+// which a lobby browser has. Rather than loosening that check for every
+// caller, a room card's cover resolves through a narrower, room-code-scoped
+// route (GET /rooms/:code/cover, routes/rooms.ts) that only ever serves the
+// image — never the puzzle's title/premise/solution — and only for a room
+// that's currently actually listed (status waiting/active, the same rows
+// listActiveRooms() returns); once a room is solved or gone, this URL 404s
+// exactly like the room itself would stop appearing in the list.
+export function coverForRoom(slug: string | null | undefined, code: string, coverPath?: string | null): string {
+  if (coverPath) return `/rooms/${encodeURIComponent(code)}/cover`;
+  return asset((slug && STABLE_COVERS[slug]) || ARCHIVE_COVER);
+}

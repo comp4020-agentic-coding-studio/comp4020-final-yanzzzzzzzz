@@ -318,6 +318,8 @@ export interface LobbyRoom {
   code: string;
   name: string | null;
   title: string;
+  slug: string | null;
+  cover_path: string | null;
   host_session_id: string | null;
   status: "waiting" | "active";
 }
@@ -535,7 +537,7 @@ export function transferHost(roomId: string, toSessionId: string): void {
 export function listActiveRooms(limit = 20): LobbyRoom[] {
   return db
     .prepare(
-      `SELECT r.id, r.code, r.name, p.title, r.host_session_id, r.status
+      `SELECT r.id, r.code, r.name, p.title, p.slug, p.cover_path, r.host_session_id, r.status
        FROM rooms r
        JOIN puzzles p ON p.id = r.puzzle_id
        WHERE r.status IN ('waiting', 'active')
@@ -552,7 +554,7 @@ export function listActiveRooms(limit = 20): LobbyRoom[] {
 export function getLobbyCard(roomId: string): LobbyRoom | undefined {
   return db
     .prepare(
-      `SELECT r.id, r.code, r.name, p.title, r.host_session_id, r.status
+      `SELECT r.id, r.code, r.name, p.title, p.slug, p.cover_path, r.host_session_id, r.status
        FROM rooms r
        JOIN puzzles p ON p.id = r.puzzle_id
        WHERE r.id = ? AND r.status IN ('waiting', 'active')`,
@@ -564,6 +566,29 @@ export function getRoomByCode(code: string): Room | undefined {
   return db
     .prepare(`SELECT ${ROOM_COLUMNS} FROM rooms WHERE code = ?`)
     .get(code.toUpperCase()) as Room | undefined;
+}
+
+// Backs GET /rooms/:code/cover (routes/rooms.ts) — the lobby-card thumbnail
+// route. Deliberately scoped to a room code, not a bare puzzle id: this only
+// ever serves an image for a room that's still actually LISTED (waiting or
+// active, the same status filter listActiveRooms() uses), so a solved or
+// never-existed room 404s exactly like it would disappear from the lobby.
+// This is intentionally a narrower grant than canViewPuzzleCover() — "this
+// room is publicly browsable in the lobby right now" is sufficient reason to
+// show its cover image to anyone, even a puzzle the author kept unshared,
+// because the lobby card itself (title included) is already equally public;
+// nothing about the puzzle's premise, solution, or shared flag is exposed by
+// this beyond what the lobby card already shows.
+export function getListedRoomCoverPath(code: string): string | null | undefined {
+  const row = db
+    .prepare(
+      `SELECT p.cover_path AS coverPath
+       FROM rooms r
+       JOIN puzzles p ON p.id = r.puzzle_id
+       WHERE r.code = ? AND r.status IN ('waiting', 'active')`,
+    )
+    .get(code.toUpperCase()) as { coverPath: string | null } | undefined;
+  return row?.coverPath;
 }
 
 export function countParticipants(roomId: string): number {

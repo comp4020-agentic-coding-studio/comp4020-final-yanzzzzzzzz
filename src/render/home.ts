@@ -3,10 +3,12 @@ import { layout } from "./layout.ts";
 import { escapeHtml } from "./html.ts";
 import { asset } from "./asset.ts";
 import { coverFor } from "./covers.ts";
+import { JUDGE_DISPLAY_NAME } from "../llm.ts";
 
 export interface LobbyCardRoom extends LobbyRoom {
   players: number;
   hostLabel: string;
+  coverUrl: string;
 }
 
 function statusLabel(status: LobbyRoom["status"]): string {
@@ -17,6 +19,9 @@ function caseCardHtml(room: LobbyCardRoom): string {
   const roomName = room.name ? escapeHtml(room.name) : `Case ${room.code}`;
   const statusClass = room.status === "waiting" ? "case-status-waiting" : "case-status-active";
   return `<li class="case-card" data-code="${room.code}">
+    <div class="case-card-cover">
+      <img src="${escapeHtml(room.coverUrl)}" alt="" width="800" height="500" loading="lazy" decoding="async" />
+    </div>
     <div class="case-card-main">
       <h3>${roomName}</h3>
       <p class="case-card-puzzle">playing <strong>${escapeHtml(room.title)}</strong></p>

@@ -169,3 +169,125 @@ it("never fabricates room counts, difficulty, or ratings — only real derived n
   expect(home).not.toMatch(/difficulty/i);
   expect(home).not.toMatch(/★|☆/); // star ratings belong to /community only
 });
+
+// ---------- Lobby/home room-card thumbnails (src/render/home.ts, public/lobby.js) ----------
+// A room playing a built-in puzzle shows that puzzle's own dedicated cover;
+// a room playing a private (unshared) authored puzzle still shows its
+// uploaded cover to any lobby viewer, through a narrower room-code-scoped
+// route than GET /uploads/cover/:puzzleId (which requires already having
+// joined, or the puzzle being shared) — see src/render/covers.ts's
+// coverForRoom() and src/db.ts's getListedRoomCoverPath().
+
+function parseSessionCookie(setCookieHeaders: string[]): string {
+  const c = setCookieHeaders.find((h) => h.startsWith("turtle_session="));
+  if (!c) throw new Error("no turtle_session cookie set");
+  return c.split(";")[0];
+}
+
+function findCardByCode(html: string, code: string): string {
+  const marker = `data-code="${code}"`;
+  const start = html.lastIndexOf("<li", html.indexOf(marker));
+  const end = html.indexOf("</li>", start);
+  return html.slice(start, end);
+}
+
+it("the homepage's open-cases lobby shows a real cover thumbnail for every room, resolved server-side", async () => {
+  await fetch(new URL("/rooms", baseUrl), { method: "POST", redirect: "manual" }); // ensure at least one room
+  const html = await (await fetch(new URL("/", baseUrl))).text();
+  const cards = [...html.matchAll(/<li class="case-card"[^>]*>[\s\S]*?<\/li>/g)].map((m) => m[0]);
+  expect(cards.length).toBeGreaterThan(0);
+  for (const card of cards) {
+    expect(card).toMatch(/<div class="case-card-cover">\s*<img src="[^"]+"/);
+  }
+});
+
+it("a built-in puzzle's lobby-card cover is its own dedicated image, not the shared archive fallback", async () => {
+  // pickRandomPuzzle() (mode=existing with no puzzleId) picks from EVERY
+  // shared puzzle, including player-authored ones other tests create — not
+  // just the eight built-ins — so a specific, known built-in puzzleId is
+  // picked explicitly here, same pattern spec/case-file.test.ts uses.
+  const picker = await (await fetch(new URL("/rooms/new?mode=existing", baseUrl))).text();
+  const puzzleId = picker.match(/<option value="([0-9a-f-]+)">The Elevator Routine/)?.[1];
+  expect(puzzleId, "The Elevator Routine should be pickable").toBeTruthy();
+
+  const res = await fetch(new URL("/rooms", baseUrl), {
+    method: "POST",
+    headers: { "content-type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({ mode: "existing", puzzleId: puzzleId! }),
+    redirect: "manual",
+  });
+  const code = (res.headers.get("location") ?? "").split("/").pop() ?? "";
+  const html = await (await fetch(new URL("/", baseUrl))).text();
+  const card = findCardByCode(html, code);
+  expect(card).toContain("/images/mystery/case-elevator.webp");
+});
+
+it("a private authored puzzle's room still shows its uploaded cover on the lobby card to an unrelated stranger", async () => {
+  const sharp = (await import("sharp")).default;
+  const jpeg = await sharp({ create: { width: 400, height: 250, channels: 3, background: { r: 10, g: 80, b: 200 } } })
+    .jpeg()
+    .toBuffer();
+  const title = `Private Lobby Cover Case ${Date.now()}`;
+  const form = new FormData();
+  form.set("mode", "author");
+  form.set("title", title);
+  form.set("premise", `${title} premise.`);
+  form.set("solution", `${title} solution.`);
+  // shared intentionally omitted — this puzzle stays private.
+  form.set("cover", new Blob([jpeg], { type: "image/jpeg" }), "cover.jpg");
+  const createRes = await fetch(new URL("/rooms", baseUrl), { method: "POST", body: form, redirect: "manual" });
+  expect(createRes.status).toBe(303);
+  const code = (createRes.headers.get("location") ?? "").split("/").pop() ?? "";
+
+  // A brand-new, unrelated stranger fetch — no cookie forwarded, not the
+  // author, hasn't joined this room.
+  const home = await (await fetch(new URL("/", baseUrl))).text();
+  const card = findCardByCode(home, code);
+  const coverMatch = card.match(/\/rooms\/[A-Z0-9]+\/cover/);
+  expect(coverMatch, "a private room's lobby card should still carry its own uploaded cover URL").toBeTruthy();
+
+  const coverRes = await fetch(new URL(coverMatch![0], baseUrl));
+  expect(coverRes.status, "the room-scoped cover route should serve the image to any viewer").toBe(200);
+  expect(coverRes.headers.get("content-type")).toBe("image/webp");
+
+  // The narrower room-cover grant doesn't widen the puzzle-id-keyed route —
+  // the lobby card never even carries that URL shape for a private puzzle.
+  expect(card.match(/\/uploads\/cover\/[0-9a-f-]+/)).toBeNull();
+});
+
+it("a room-scoped cover URL 404s once the room is solved and no longer listed", async () => {
+  const sharp = (await import("sharp")).default;
+  const jpeg = await sharp({ create: { width: 400, height: 250, channels: 3, background: { r: 5, g: 5, b: 5 } } })
+    .jpeg()
+    .toBuffer();
+  const title = `Solved Lobby Cover Case ${Date.now()}`;
+  const solutionText = `The unique solution phrase for ${title}.`;
+  const form = new FormData();
+  form.set("mode", "author");
+  form.set("title", title);
+  form.set("premise", `${title} premise.`);
+  form.set("solution", solutionText);
+  form.set("cover", new Blob([jpeg], { type: "image/jpeg" }), "cover.jpg");
+  const createRes = await fetch(new URL("/rooms", baseUrl), { method: "POST", body: form, redirect: "manual" });
+  const cookie = parseSessionCookie(createRes.headers.getSetCookie());
+  const code = (createRes.headers.get("location") ?? "").split("/").pop() ?? "";
+
+  const coverUrl = new URL(`/rooms/${code}/cover`, baseUrl);
+  const before = await fetch(coverUrl);
+  expect(before.status).toBe(200);
+
+  await fetch(new URL(`/rooms/${code}/start`, baseUrl), { method: "POST", headers: { cookie }, redirect: "manual" });
+  // The author can't guess their own puzzle (notice=author-guess) — join as
+  // a second session first, same pattern spec/room-lifecycle.test.ts uses.
+  const joinRes = await fetch(new URL(`/rooms/${code}`, baseUrl), { redirect: "manual" });
+  const guesserCookie = parseSessionCookie(joinRes.headers.getSetCookie());
+  await fetch(new URL(`/rooms/${code}/ask`, baseUrl), {
+    method: "POST",
+    headers: { cookie: guesserCookie, "content-type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({ question: solutionText, kind: "guess" }),
+    redirect: "manual",
+  });
+
+  const after = await fetch(coverUrl);
+  expect(after.status, "a solved room's cover URL should 404, same as it drops out of the lobby").toBe(404);
+});

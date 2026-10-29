@@ -7,6 +7,7 @@ import {
   createAuthoredPuzzle,
   createRoom,
   displayLabel,
+  getListedRoomCoverPath,
   getProfile,
   getPuzzle,
   getRoomByCode,
@@ -34,6 +35,7 @@ import { roomNotFoundPage } from "../render/not-found.ts";
 import { broadcastLobbyCardChange, LOBBY_CHANNEL } from "./lobby.ts";
 import { isSameOrigin } from "../same-origin.ts";
 import { coverFilePath, coverRejectionMessage, deleteCover, processCoverUpload } from "../uploads.ts";
+import { coverForRoom } from "../render/covers.ts";
 import { readFile } from "node:fs/promises";
 
 const COOLDOWN_MS = 5_000;
@@ -235,6 +237,7 @@ rooms.post(
       status: room.status,
       players: 0,
       hostLabel: hostLabel(sessionId),
+      coverUrl: coverForRoom(puzzle.slug, room.code, puzzle.cover_path),
     },
     "lobby-update",
   );
@@ -273,6 +276,39 @@ rooms.get("/uploads/cover/:puzzleId", async (c) => {
   // without a cache-busting query string, since the URL itself (the
   // puzzle's own id) never points at different bytes over time.
   c.header("Cache-Control", "private, max-age=86400");
+  return c.body(fileBytes);
+});
+
+// The lobby/home room-card thumbnail for a player-uploaded cover —
+// deliberately NOT routed through canViewPuzzleCover() (which requires
+// having already joined the room, or the puzzle being shared/public), since
+// a lobby card is shown to people who haven't joined yet and a private
+// authored puzzle's room is still legitimately listed. Scoped instead to
+// "this room is currently listed" (getListedRoomCoverPath(), src/db.ts) —
+// the same status filter the lobby list itself uses — so this route serves
+// exactly the one image a lobby viewer can already see is attached to a
+// publicly-browsable room, never anything about a puzzle that isn't
+// actually listed anywhere. No caching headers reveal whether a code is
+// real vs solved/nonexistent beyond the 404 itself, same as the room page.
+rooms.get("/rooms/:code/cover", async (c) => {
+  const code = c.req.param("code");
+  const coverPath = getListedRoomCoverPath(code);
+  if (!coverPath) return c.notFound();
+
+  let fileBytes;
+  try {
+    fileBytes = await readFile(coverFilePath(coverPath));
+  } catch {
+    return c.notFound();
+  }
+  c.header("Content-Type", "image/webp");
+  c.header("X-Content-Type-Options", "nosniff");
+  // Short cache, unlike the puzzle-id-keyed upload route: once this room is
+  // solved/delisted, getListedRoomCoverPath() starts returning null and this
+  // same URL 404s — a long cache would keep serving a stale 200 for an
+  // image that should disappear from the lobby promptly, not up to a day
+  // later.
+  c.header("Cache-Control", "private, max-age=60");
   return c.body(fileBytes);
 });
 

@@ -20,10 +20,17 @@
     return status === "waiting" ? "case-status-waiting" : "case-status-active";
   }
 
-  // Mirrors src/render/home.ts's caseCardHtml().
+  // Mirrors src/render/home.ts's caseCardHtml(). room.coverUrl is always a
+  // server-resolved URL (src/render/covers.ts's coverFor/coverForRoom,
+  // sent over the wire as plain JSON data, never raw HTML) — escaped here
+  // like every other server-sourced string in this file, not trusted as
+  // markup.
   function cardHtml(room) {
     const roomName = room.name ? escapeHtml(room.name) : `Case ${room.code}`;
     return `
+      <div class="case-card-cover">
+        <img src="${escapeHtml(room.coverUrl)}" alt="" width="800" height="500" loading="lazy" decoding="async" />
+      </div>
       <div class="case-card-main">
         <h3>${roomName}</h3>
         <p class="case-card-puzzle">playing <strong>${escapeHtml(room.title)}</strong></p>

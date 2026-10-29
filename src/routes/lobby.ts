@@ -1,19 +1,20 @@
 import { Hono } from "hono";
 import { streamSSE } from "hono/streaming";
-import { getLobbyCard, hostLabel, listActiveRooms } from "../db.ts";
+import { getLobbyCard, hostLabel, listActiveRooms, type LobbyRoom } from "../db.ts";
 import { broadcast, connectionCount, subscribe } from "../sse.ts";
+import { coverForRoom } from "../render/covers.ts";
 
 export const LOBBY_CHANNEL = "lobby";
 
 export const lobby = new Hono();
 
-// A room's lobby-card shape, with the two fields that only make sense once
-// joined to live connection state (players) or a session lookup (hostLabel)
-// — the same enrichment src/server.ts's GET / does for the initial
-// server-rendered page.
-function enrichedCard(roomId: string) {
-  const card = getLobbyCard(roomId);
-  if (!card) return undefined;
+// A room's lobby-card shape, with the fields that only make sense once
+// joined to live connection state (players), a session lookup (hostLabel),
+// or the cover-resolution rules every other case card already uses
+// (coverUrl) — the same enrichment src/server.ts's GET / does for the
+// initial server-rendered page, so the live SSE path (snapshot + upsert
+// below) never shows a different card shape than the one already on screen.
+function enrichedRoom(card: LobbyRoom) {
   return {
     code: card.code,
     name: card.name,
@@ -21,7 +22,13 @@ function enrichedCard(roomId: string) {
     status: card.status,
     players: connectionCount(card.id),
     hostLabel: hostLabel(card.host_session_id),
+    coverUrl: coverForRoom(card.slug, card.code, card.cover_path),
   };
+}
+
+function enrichedCard(roomId: string) {
+  const card = getLobbyCard(roomId);
+  return card ? enrichedRoom(card) : undefined;
 }
 
 // Pushes a live update for one room's card (status/host changed, or no
@@ -63,14 +70,7 @@ lobby.get("/lobby/stream", (c) => {
     // drops it), means the client's rendered list is reconciled to ground
     // truth unconditionally rather than relying on having caught every
     // individual event since some earlier point in time.
-    const rooms = listActiveRooms().map((r) => ({
-      code: r.code,
-      name: r.name,
-      title: r.title,
-      status: r.status,
-      players: connectionCount(r.id),
-      hostLabel: hostLabel(r.host_session_id),
-    }));
+    const rooms = listActiveRooms().map(enrichedRoom);
     await stream.writeSSE({ data: JSON.stringify(rooms), event: "snapshot" });
 
     // Fly's proxy and other intermediaries can time out an idle connection;
