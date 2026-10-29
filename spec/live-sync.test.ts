@@ -1,5 +1,6 @@
 import { JSDOM } from "jsdom";
 import { expect, inject, it } from "vitest";
+import sharp from "sharp";
 
 // Regression coverage for a real bug report: "another browser creates a
 // room and the lobby needs a manual refresh to see it; a room's status/
@@ -306,6 +307,185 @@ it(
     expect(notice.hidden).toBe(false);
     expect(notice.textContent).not.toBe("");
     expect(input.value).toBe("second question during cooldown");
+    window.close();
+  },
+  10_000,
+);
+
+// Regression test for a real root-reproduced browser bug: two independent
+// origins joined the same room as distinct sessions, each asked a question
+// (each message correctly showed its own author's avatar, since src/render/
+// room.ts's SSR version already wrote the data-author-session-id attribute
+// correctly). One session then clicked "Remove uploaded avatar" on the
+// profile page — the live member list updated (a full re-render from a
+// fresh roster), but that session's ALREADY-RENDERED message kept showing
+// the old avatar even after the "avatar-update" SSE event arrived and after
+// waiting. Root's own DOM inspection (`img.getAttribute("data-author-
+// session-id")` on every `#transcript img` returning null) found the exact
+// cause: public/client.js's own avatarImgHtml() — the function that renders
+// a message delivered LIVE over SSE — never wrote that attribute at all,
+// only the SSR path did. The "avatar-update" handler's own
+// `img[data-author-session-id="..."]` query therefore matched nothing on a
+// live-delivered message, however many times it fired.
+//
+// Node's EventSource implementation (package.json's --experimental-
+// eventsource flag) silently ignores a custom `headers` option — confirmed
+// by inspecting its own source — so a cookie-authenticated SSE connection
+// can't actually be driven end-to-end through jsdom's EventSource the way
+// every other spec/live-sync.test.ts case drives a real fetch/POST; the
+// server-broadcast side of this exact fix (presence + a correctly-scoped
+// avatar-update event, in the right order) was independently confirmed by
+// reading the raw SSE wire directly (same technique spec/sse.test.ts and
+// this file's other tests already use for the parts that need it). This
+// test instead drives the REAL public/client.js functions this bug lives in
+// — appendEntry()/renderEntry() (the live-render path) and the real
+// "avatar-update" listener attached to the real, running EventSource
+// instance — by dispatching synthetic SSE-shaped events directly onto that
+// instance, the same event shapes and data the server really sends.
+async function makeTinyAvatarJpeg(color: { r: number; g: number; b: number }): Promise<Uint8Array<ArrayBuffer>> {
+  const buf = await sharp({ create: { width: 64, height: 64, channels: 3, background: color } }).jpeg().toBuffer();
+  return Uint8Array.from(buf);
+}
+
+// Loads a room page with a REAL EventSource subclass that, in addition to
+// everything loadDom() already does, stashes every instance it constructs
+// onto window.__capturedSources — letting the test reach in and fire a
+// synthetic server event on the real, already-connected connection
+// client.js is really listening on, working around Node's EventSource
+// silently dropping the cookie header (see this test's own comment above).
+async function loadRoomDomWithCapturedSource(
+  path: string,
+  cookie: string,
+): Promise<{ window: JSDOM["window"]; dispatch: (event: string, data: unknown) => void }> {
+  const res = await fetch(new URL(path, baseUrl), { headers: { cookie } });
+  const html = await res.text();
+  const dom = new JSDOM(html, {
+    url: new URL(path, baseUrl).toString(),
+    runScripts: "dangerously",
+    resources: "usable",
+    pretendToBeVisual: true,
+    beforeParse(window) {
+      const captured: InstanceType<typeof EventSource>[] = [];
+      (window as unknown as { __capturedSources: unknown }).__capturedSources = captured;
+      window.EventSource = class extends EventSource {
+        constructor(url: string | URL, opts?: EventSourceInit) {
+          super(new URL(url, window.location.href).toString(), {
+            ...opts,
+            ...{ headers: { cookie } },
+          } as EventSourceInit);
+          captured.push(this);
+        }
+      } as unknown as typeof window.EventSource;
+      const realFetch = fetch;
+      window.fetch = ((url: string | URL, opts: RequestInit = {}) =>
+        realFetch(new URL(url, window.location.href).toString(), {
+          ...opts,
+          headers: { ...(opts.headers as Record<string, string> | undefined), cookie },
+        })) as typeof window.fetch;
+      window.Element.prototype.scrollIntoView = () => {};
+    },
+  });
+  await new Promise((resolve) => dom.window.addEventListener("load", resolve));
+  await new Promise((resolve) => setTimeout(resolve, 300));
+
+  function dispatch(event: string, data: unknown): void {
+    const sources = (dom.window as unknown as { __capturedSources: InstanceType<typeof EventSource>[] })
+      .__capturedSources;
+    const roomSource = sources.find((s) => (s as unknown as { url: string }).url.includes("/stream"));
+    if (!roomSource) throw new Error("no captured room EventSource to dispatch on");
+    // roomSource is built from Node's own global EventSource (the real
+    // client, same as a real browser's), which requires Node's own global
+    // Event/MessageEvent constructors for dispatchEvent() — NOT jsdom's
+    // window.MessageEvent, which it rejects as "not an instance of Event"
+    // since the two realms' classes are distinct.
+    roomSource.dispatchEvent(new MessageEvent(event, { data: JSON.stringify(data) }));
+  }
+
+  return { window: dom.window, dispatch };
+}
+
+it(
+  "repoints an already-rendered LIVE message's avatar when its author's avatar changes, leaving other authors' avatars and Watson's untouched",
+  async () => {
+    const create = await fetch(new URL("/rooms", baseUrl), { method: "POST", redirect: "manual" });
+    const code = (create.headers.get("location") ?? "").split("/").pop()!;
+    const hostCookie = parseCookie(create.headers.getSetCookie());
+    await fetch(new URL(`/rooms/${code}/start`, baseUrl), {
+      method: "POST",
+      headers: { cookie: hostCookie },
+      redirect: "manual",
+    });
+
+    const { window, dispatch } = await loadRoomDomWithCapturedSource(`/rooms/${code}`, hostCookie);
+
+    const authorAId = "11111111-1111-4111-8111-111111111111";
+    const authorBId = "22222222-2222-4222-8222-222222222222";
+    const avatarAOld = "/uploads/avatar/author-a-old.webp";
+    const avatarANew = "/uploads/avatar/author-a-new.webp";
+    const avatarB = "/uploads/avatar/author-b.webp";
+
+    // A player-question entry and a judge-reply entry, delivered live over
+    // SSE exactly the way src/routes/rooms.ts's broadcast() payloads are
+    // shaped (an entry.avatarUrl already attached server-side) — this is
+    // the exact code path (appendEntry -> renderEntry -> avatarImgHtml)
+    // that silently dropped the data-author-session-id attribute.
+    dispatch("message", {
+      id: 101,
+      room_id: "r1",
+      session_id: authorAId,
+      kind: "question",
+      body: "author A's live question",
+      verdict: "yes",
+      label: null,
+      avatarUrl: avatarAOld,
+    });
+    dispatch("message", {
+      id: 102,
+      room_id: "r1",
+      session_id: authorBId,
+      kind: "question",
+      body: "author B's live question",
+      verdict: "yes",
+      label: null,
+      avatarUrl: avatarB,
+    });
+    dispatch("message", {
+      id: 103,
+      room_id: "r1",
+      session_id: null,
+      kind: "system",
+      body: "Yes.",
+      verdict: null,
+      label: null,
+      avatarUrl: "/images/avatars/avatar-watson.webp",
+    });
+
+    const authorAImg = window.document.querySelector(
+      `img[data-author-session-id="${authorAId}"]`,
+    ) as HTMLImageElement | null;
+    const authorBImg = window.document.querySelector(
+      `img[data-author-session-id="${authorBId}"]`,
+    ) as HTMLImageElement | null;
+    expect(
+      authorAImg,
+      "a LIVE-delivered question entry's avatar must carry its author's session id — this is exactly what the bug dropped",
+    ).not.toBeNull();
+    expect(authorBImg).not.toBeNull();
+    expect(authorAImg!.src).toContain(avatarAOld);
+
+    // The judge-reply chip is never author-attributed — Watson has no
+    // session to re-target.
+    const watsonChip = window.document.querySelector(".entry-judge-reply img.avatar-chip");
+    expect(watsonChip).not.toBeNull();
+    expect(watsonChip!.getAttribute("data-author-session-id")).toBeNull();
+
+    // Author A's avatar changes live — only author A's own message updates.
+    dispatch("avatar-update", { sessionId: authorAId, avatarUrl: avatarANew });
+
+    expect(authorAImg!.src).toContain(avatarANew);
+    expect(authorBImg!.src).toContain(avatarB);
+    expect(watsonChip!.getAttribute("src")).toContain("avatar-watson.webp");
+
     window.close();
   },
   10_000,

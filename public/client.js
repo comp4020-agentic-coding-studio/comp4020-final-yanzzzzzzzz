@@ -86,8 +86,20 @@
   // anything client-side, and never the viewer's. Rendered as a plain
   // escaped <img src>, same trust level as every other server-sourced
   // string in this file.
-  function avatarImgHtml(url, size) {
-    return url ? `<img src="${escapeHtml(url)}" alt="" width="${size}" height="${size}" class="avatar-chip" /> ` : "";
+  //
+  // `authorSessionId`, when given, is stamped onto the <img> as
+  // data-author-session-id — the exact same attribute src/render/room.ts's
+  // SSR entryHtml() already writes — so the "avatar-update" handler below
+  // can find and repoint this one element if that session's avatar changes
+  // while this transcript is already on screen. Deliberately omitted for
+  // Watson's judge-reply chip and the member-list chip: Watson has no
+  // session to re-target, and the member list is always fully re-rendered
+  // from a fresh roster on every "presence" event, never patched in place.
+  function avatarImgHtml(url, size, authorSessionId) {
+    if (!url) return "";
+    const authorAttr =
+      authorSessionId != null ? ` data-author-session-id="${escapeHtml(authorSessionId)}"` : "";
+    return `<img src="${escapeHtml(url)}" alt="" width="${size}" height="${size}" class="avatar-chip"${authorAttr} /> `;
   }
 
   function renderEntry(entry) {
@@ -103,7 +115,7 @@
       li.className = `entry entry-${entry.kind} ${own ? "entry-own" : "entry-other"}`;
       li.innerHTML = `
         <p class="entry-meta">
-          ${avatarImgHtml(entry.avatarUrl, 24)}
+          ${avatarImgHtml(entry.avatarUrl, 24, entry.session_id)}
           <span class="entry-label">${escapeHtml(entry.label ? formatAutoLabel(entry.label) : "Mystery Detective")}</span>
           <span class="entry-kind-badge">${KIND_BADGE[entry.kind]}</span>
         </p>
