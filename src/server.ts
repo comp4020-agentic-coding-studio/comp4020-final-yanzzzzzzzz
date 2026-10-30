@@ -32,8 +32,11 @@ app.get("/", (c) => {
     hostLabel: hostLabel(r.host_session_id),
     coverUrl: coverForRoom(r.slug, r.code, r.cover_path),
   }));
+  // Fixed built-in picks: newly shared player stories must not displace them.
+  const featuredSlugs = ["turtle-soup-bowl", "silent-phone-call", "elevator-routine"];
   const featuredPuzzles = listAvailablePuzzles()
-    .slice(0, 3)
+    .filter((p) => p.authorLabel === null && featuredSlugs.includes(p.slug ?? ""))
+    .sort((a, b) => featuredSlugs.indexOf(a.slug!) - featuredSlugs.indexOf(b.slug!))
     .map((p) => ({ id: p.id, slug: p.slug, title: p.title, premise: p.premise, coverPath: p.coverPath }));
   return c.html(
     homePage({ rooms, profile, reasoningSeconds: totalReasoningSeconds(), featuredPuzzles }),

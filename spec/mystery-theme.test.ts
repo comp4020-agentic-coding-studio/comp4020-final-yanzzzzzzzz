@@ -291,3 +291,25 @@ it("a room-scoped cover URL 404s once the room is solved and no longer listed", 
   const after = await fetch(coverUrl);
   expect(after.status, "a solved room's cover URL should 404, same as it drops out of the lobby").toBe(404);
 });
+
+
+it("keeps the original three built-in featured cases after a player publishes a newer story", async () => {
+  const marker = `featured-exclusion-${Date.now()}`;
+  const result = await fetch(new URL("/rooms", baseUrl), {
+    method: "POST", headers: { "content-type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({ mode: "author", title: "A Bowl of Turtle Soup", premise: marker, solution: "A distinct player-authored explanation.", shared: "on" }),
+    redirect: "manual",
+  });
+  expect(result.status).toBe(303);
+  const html = await (await fetch(new URL("/", baseUrl))).text();
+  const featured = html.match(/<section class="featured-cases">([\s\S]*?)<\/section>/)?.[1] ?? "";
+  expect([...featured.matchAll(/<h3>(.*?)<\/h3>/g)].map(m => m[1])).toEqual([
+    "A Bowl of Turtle Soup", "The Silent Phone Call", "The Elevator Routine",
+  ]);
+  expect(featured).not.toContain(marker);
+  expect(featured).toContain("/images/mystery/case-soup.webp");
+  expect(featured).toContain("/images/mystery/case-phone.webp");
+  expect(featured).toContain("/images/mystery/case-elevator.webp");
+  const library = await (await fetch(new URL(`/cases?source=player&q=${marker}`, baseUrl))).text();
+  expect(library).toContain(marker);
+});
