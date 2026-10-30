@@ -71,3 +71,5 @@
 
 - Personal investigation and story archives must use the request cookie's session, never a query-supplied identity. Own private story reuse must be allowed only to its author in both GET selection and POST creation; list queries never select solutions.
 - Personal time receives only the same server-clock credit as the deduplicated site total. Preserve NULL for untracked history, and add new participant columns after legacy table/FK repairs. Test joined sessions and actual response contracts rather than modifying APIs to fit fixtures.
+
+- Homepage Featured cases are the fixed original built-in trio (turtle-soup-bowl, silent-phone-call, elevator-routine), in that order. Player uploads, including matching titles, must never displace them.

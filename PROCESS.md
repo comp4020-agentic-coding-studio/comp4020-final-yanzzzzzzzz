@@ -165,3 +165,8 @@ checks. Three rewritten classic cases were uploaded through the real form,
 with sources in hidden solutions. One earlier real Gemini call timed out;
 real-model reliability remains unconfirmed, despite passing mock checks.
 
+
+[31fe238](https://github.com/comp4020-agentic-coding-studio/comp4020-final-yanzzzzzzzz/commit/31fe238)
+fixes homepage recommendations to the original three built-in slugs, excluding
+player uploads even when titles match. The regression checks both fixed order
+and continued player-library visibility. All 220 tests, typecheck and build passed.
